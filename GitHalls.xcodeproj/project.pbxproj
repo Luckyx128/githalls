@@ -30,11 +30,6 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		EE8D0E7E303F612C0032E154 /* GitHalls */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = GitHalls;
-			sourceTree = "<group>";
-		};
 		EE8D0E8E303F612F0032E154 /* GitHallsTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = GitHallsTests;
@@ -43,6 +38,11 @@
 		EE8D0E98303F612F0032E154 /* GitHallsUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = GitHallsUITests;
+			sourceTree = "<group>";
+		};
+		EE8D0EF6303F7CBA0032E154 /* GitHalls */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = GitHalls;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -75,7 +75,7 @@
 		EE8D0E73303F612C0032E154 = {
 			isa = PBXGroup;
 			children = (
-				EE8D0E7E303F612C0032E154 /* GitHalls */,
+				EE8D0EF6303F7CBA0032E154 /* GitHalls */,
 				EE8D0E8E303F612F0032E154 /* GitHallsTests */,
 				EE8D0E98303F612F0032E154 /* GitHallsUITests */,
 				EE8D0E7D303F612C0032E154 /* Products */,
@@ -108,7 +108,7 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				EE8D0E7E303F612C0032E154 /* GitHalls */,
+				EE8D0EF6303F7CBA0032E154 /* GitHalls */,
 			);
 			name = GitHalls;
 			packageProductDependencies = (
@@ -395,9 +395,8 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				ENABLE_APP_SANDBOX = YES;
+				ENABLE_APP_SANDBOX = NO;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -425,9 +424,8 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				ENABLE_APP_SANDBOX = YES;
+				ENABLE_APP_SANDBOX = NO;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
