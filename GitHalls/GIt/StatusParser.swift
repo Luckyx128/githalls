@@ -18,7 +18,7 @@ enum StatusParser {
         let chars = Array(line)
         let indexStatus = chars[0]
         let worktreeStatus = chars[1]
-        let rest = String(chars[3])
+        let rest = String(chars[3...])
         
         if indexStatus == "R" || indexStatus == "C" {
             let parts = rest.components(separatedBy: " -> ")

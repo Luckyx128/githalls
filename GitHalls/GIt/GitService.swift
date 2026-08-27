@@ -60,3 +60,19 @@ extension GitService {
         return StatusParser.parse(result.standardOutput)
     }
 }
+
+extension GitService {
+    func diff(at repoURL: URL, for change: FileChange) async throws -> FileDiff {
+        guard change.status != .untracked else {
+            let fileURL = repoURL.appending(path: change.path)
+            let content = try String(contentsOf: fileURL, encoding: .utf8)
+            return DiffParser.syntheticAllAdditions(path: change.path, content: content)
+        }
+
+        let result = try await run(["diff", "--no-color", "HEAD", "--", change.path], in: repoURL)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+        return DiffParser.parse(result.standardOutput)
+    }
+}

@@ -6,3 +6,54 @@
 //
 
 import Foundation
+import SwiftUI
+
+struct ChangesSidebarView: View {
+    @Bindable var viewModel: RepositoryViewModel
+
+    var body: some View {
+        List(viewModel.changes, selection: $viewModel.selectedChangeID) { change in
+            FileChangeRow(change: change)
+                .tag(change.id)
+        }
+        .onChange(of: viewModel.selectedChangeID) {
+                    Task { await viewModel.loadDiff() }
+                }
+    }
+}
+
+struct FileChangeRow: View {
+    let change: FileChange
+
+    var body: some View {
+        Label {
+            Text(change.path)
+                .lineLimit(1)
+        } icon: {
+            Image(systemName: symbolName)
+                .foregroundStyle(symbolColor)
+        }
+    }
+
+    private var symbolName: String {
+        switch change.status {
+        case .modified: "pencil.circle.fill"
+        case .added: "plus.circle.fill"
+        case .deleted: "minus.circle.fill"
+        case .renamed: "arrow.turn.up.right"
+        case .copied: "doc.on.doc.fill"
+        case .untracked: "questionmark.circle.fill"
+        case .unmerged: "exclamationmark.triangle.fill"
+        }
+    }
+
+    private var symbolColor: Color {
+        switch change.status {
+        case .modified: .yellow
+        case .added, .untracked: .green
+        case .deleted: .red
+        case .renamed, .copied: .blue
+        case .unmerged: .orange
+        }
+    }
+}
