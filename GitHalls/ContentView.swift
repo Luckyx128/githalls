@@ -26,6 +26,14 @@ struct ContentView: View {
                     Label("Open Repository...", systemImage: "folder.badge.plus")
                 }
             }
+            ToolbarItem {
+                Button {
+                    Task { await viewModel.refreshStatus() }
+                } label: {
+                    Label ("Refresh", systemImage: "arrow.clockwise")
+                }
+                .disabled(viewModel.repositoryURL == nil)
+            }
         }
         .navigationTitle(viewModel.repositoryURL?.lastPathComponent ?? "GitHalls")
     }

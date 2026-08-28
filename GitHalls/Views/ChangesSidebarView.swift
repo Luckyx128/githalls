@@ -12,13 +12,32 @@ struct ChangesSidebarView: View {
     @Bindable var viewModel: RepositoryViewModel
 
     var body: some View {
-        List(viewModel.changes, selection: $viewModel.selectedChangeID) { change in
-            FileChangeRow(change: change)
-                .tag(change.id)
+        Group {
+            if viewModel.repositoryURL == nil {
+                ContentUnavailableView("No Repository Open", systemImage: "folder", description: Text("Use \"Open Repository…\" to get started."))
+            } else if viewModel.changes.isEmpty {
+                ContentUnavailableView("No Changes", systemImage: "checkmark.circle")
+            } else {
+                List(viewModel.changes, selection: $viewModel.selectedChangeID) { change in
+                    FileChangeRow(change: change)
+                        .tag(change.id)
+                }
+            }
         }
         .onChange(of: viewModel.selectedChangeID) {
-                    Task { await viewModel.loadDiff() }
-                }
+            Task { await viewModel.loadDiff() }
+        }
+        .alert(
+            "Error",
+            isPresented: Binding(
+                get: { viewModel.errorMessage != nil },
+                set: { if !$0 { viewModel.errorMessage = nil } }
+            )
+        ) {
+            Button("OK") { viewModel.errorMessage = nil }
+        } message: {
+            Text(viewModel.errorMessage ?? "")
+        }
     }
 }
 
