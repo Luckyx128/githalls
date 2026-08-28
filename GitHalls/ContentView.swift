@@ -18,6 +18,9 @@ struct ContentView: View {
         } detail: {
             DiffDetailView(viewModel: viewModel)
         }
+        .task {
+            viewModel.openMostRecentRepositoryIfNeeded()
+        }
         .toolbar {
             ToolbarItem {
                 Button {
@@ -28,12 +31,21 @@ struct ContentView: View {
             }
             ToolbarItem {
                 Button {
+                    viewModel.closeRepository()
+                } label: {
+                    Label("Close Repository", systemImage: "xmark.circle")
+                }
+                .disabled(viewModel.repositoryURL == nil)
+            }
+            ToolbarItem {
+                Button {
                     Task { await viewModel.refreshStatus() }
                 } label: {
                     Label ("Refresh", systemImage: "arrow.clockwise")
                 }
                 .disabled(viewModel.repositoryURL == nil)
             }
+            
         }
         .navigationTitle(viewModel.repositoryURL?.lastPathComponent ?? "GitHalls")
     }

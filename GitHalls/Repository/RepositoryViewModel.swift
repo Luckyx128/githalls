@@ -35,18 +35,19 @@ final class RepositoryViewModel {
     var commitDescription: String = ""
     var isCommitting: Bool = false
     
+    var recentRepositoryURLs: [URL] = RecentRepositoriesStore.load()
+    
     func pickRepository() {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
         panel.prompt = "Open Repository"
-        
+
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        repositoryURL = url
-        selectedChangeID = nil
-        Task { await refreshStatus()}
+        open(url)
     }
+    
     
     func refreshStatus() async {
             guard let repositoryURL else { return }
@@ -123,6 +124,38 @@ final class RepositoryViewModel {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+    
+    
+
+    func open(_ url: URL) {
+        repositoryURL = url
+        selectedChangeID = nil
+        currentDiff = nil
+        RecentRepositoriesStore.addOrPromote(url)
+        recentRepositoryURLs = RecentRepositoriesStore.load()
+        Task { await refreshStatus() }
+    }
+
+    func openMostRecentRepositoryIfNeeded() {
+        guard repositoryURL == nil, let mostRecent = recentRepositoryURLs.first else { return }
+        open(mostRecent)
+    }
+    
+    func closeRepository() {
+        repositoryURL = nil
+        changes = []
+        selectedChangeID = nil
+        currentDiff = nil
+        currentBranch = nil
+        commitSummary = ""
+        commitDescription = ""
+        errorMessage = nil
+    }
+
+    func forgetRecent(_ url: URL) {
+        RecentRepositoriesStore.remove(url)
+        recentRepositoryURLs = RecentRepositoriesStore.load()
     }
     
 }
