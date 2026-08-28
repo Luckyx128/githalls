@@ -12,16 +12,24 @@ struct ChangesSidebarView: View {
     @Bindable var viewModel: RepositoryViewModel
 
     var body: some View {
-        Group {
-            if viewModel.repositoryURL == nil {
-                ContentUnavailableView("No Repository Open", systemImage: "folder", description: Text("Use \"Open Repository…\" to get started."))
-            } else if viewModel.changes.isEmpty {
-                ContentUnavailableView("No Changes", systemImage: "checkmark.circle")
-            } else {
-                List(viewModel.changes, selection: $viewModel.selectedChangeID) { change in
-                    FileChangeRow(change: change)
+        VStack(spacing: 0) {
+            Group {
+                if viewModel.repositoryURL == nil {
+                    ContentUnavailableView("No Repository Open", systemImage: "folder", description: Text("Use \"Open Repository…\" to get started."))
+                } else if viewModel.changes.isEmpty {
+                    ContentUnavailableView("No Changes", systemImage: "checkmark.circle")
+                } else {
+                    List(viewModel.changes, selection: $viewModel.selectedChangeID) { change in
+                        FileChangeRow(change: change) {
+                            Task { await viewModel.toggleStage(for: change)}
+                        }
                         .tag(change.id)
+                    }
                 }
+            }
+            if viewModel.repositoryURL != nil {
+                Divider()
+                CommitView(viewModel: viewModel)
             }
         }
         .onChange(of: viewModel.selectedChangeID) {
@@ -43,14 +51,23 @@ struct ChangesSidebarView: View {
 
 struct FileChangeRow: View {
     let change: FileChange
-
+    let onToggleStage: () -> Void
+    
     var body: some View {
-        Label {
-            Text(change.path)
-                .lineLimit(1)
-        } icon: {
-            Image(systemName: symbolName)
-                .foregroundStyle(symbolColor)
+        HStack {
+            Toggle("", isOn: Binding(
+                get: { change.isStaged},
+                set: {_ in onToggleStage() }
+            ))
+            .toggleStyle(.checkbox)
+            .labelsHidden()
+            Label {
+                Text(change.path)
+                    .lineLimit(1)
+            } icon: {
+                Image(systemName: symbolName)
+                    .foregroundStyle(symbolColor)
+            }
         }
     }
 

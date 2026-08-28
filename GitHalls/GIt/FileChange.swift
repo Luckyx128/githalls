@@ -18,4 +18,7 @@ struct FileChange: Identifiable, Hashable {
     let indexStatus: Character
     let worktreeStatus: Character
     let status: Status
+    var isStaged: Bool {
+        indexStatus != " " && indexStatus != "?"
+    }
 }

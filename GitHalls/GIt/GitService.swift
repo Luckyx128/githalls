@@ -52,6 +52,31 @@ actor GitService {
 }
 
 extension GitService {
+    func stage(at repoURL: URL, path:String) async throws {
+        let result = try await run(["add","--" ,path], in: repoURL)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+    }
+    
+    func unstage(at repoURL: URL, path: String) async throws {
+        let result = try await run(["reset", "HEAD", "--", path], in: repoURL)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+    }
+    
+    func commit(at repoURL: URL, summary: String, description: String?) async throws {
+            var arguments = ["commit", "-m", summary]
+            if let description, !description.isEmpty {
+                arguments += ["-m", description]
+            }
+            let result = try await run(arguments, in: repoURL)
+            guard result.terminationStatus == 0 else {
+                throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+            }
+        }
+    
     func status(at repoURL: URL) async throws -> [FileChange] {
         let result = try await run(["status", "--porcelain=v1", "--untracked-files=all"], in: repoURL)
         guard result.terminationStatus == 0 else {

@@ -25,6 +25,10 @@ final class RepositoryViewModel {
         changes.first { $0.id == selectedChangeID }
     }
     
+    var commitSummary: String = ""
+    var commitDescription: String = ""
+    var isCommitting: Bool = false
+    
     func pickRepository() {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
@@ -63,4 +67,37 @@ final class RepositoryViewModel {
                 errorMessage = error.localizedDescription
             }
         }
+    
+    func toggleStage(for change: FileChange) async {
+        guard let repositoryURL else { return }
+        do {
+            if change.isStaged {
+                try await gitService.unstage(at: repositoryURL, path: change.path)
+            }else{
+                try await gitService.stage(at: repositoryURL, path: change.path)
+            }
+            await refreshStatus()
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+    
+    func commit() async {
+        guard let repositoryURL, !commitSummary.isEmpty else { return }
+        
+        isCommitting = true
+        defer { isCommitting = false}
+        do {
+            try await gitService.commit(at: repositoryURL, summary: commitSummary, description: commitDescription.isEmpty ? nil : commitDescription)
+            commitSummary = ""
+            commitDescription = ""
+            selectedChangeID = nil
+            currentDiff = nil
+            await refreshStatus()
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
 }
