@@ -29,6 +29,8 @@ final class RepositoryViewModel {
         !changes.isEmpty && changes.allSatisfy { $0.isStaged }
     }
     
+    var currentBranch: String?
+    
     var commitSummary: String = ""
     var commitDescription: String = ""
     var isCommitting: Bool = false
@@ -50,6 +52,7 @@ final class RepositoryViewModel {
             guard let repositoryURL else { return }
             do {
                 changes = try await gitService.status(at: repositoryURL)
+                currentBranch = try? await gitService.currentBranch(at: repositoryURL)
                 errorMessage = nil
             } catch {
                 errorMessage = error.localizedDescription
@@ -121,4 +124,5 @@ final class RepositoryViewModel {
             errorMessage = error.localizedDescription
         }
     }
+    
 }

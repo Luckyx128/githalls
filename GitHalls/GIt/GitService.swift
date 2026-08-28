@@ -102,4 +102,12 @@ extension GitService {
     }
 }
 
-
+extension GitService {
+    func currentBranch(at repoURL: URL) async throws -> String {
+        let result = try await run(["branch", "--show-current"], in: repoURL)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+        return result.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}

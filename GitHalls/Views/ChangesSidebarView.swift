@@ -157,18 +157,14 @@ struct ChangesHeaderView: View {
 
             Spacer()
         }
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 15)
         .padding(.vertical, 4)
     }
 }
 
 #Preview {
     HStack {
-        
-        
         StatusBadge(status: .deleted)
-        
-
     }.padding(10)
 }
 
