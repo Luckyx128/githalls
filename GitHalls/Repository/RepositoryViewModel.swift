@@ -25,6 +25,10 @@ final class RepositoryViewModel {
         changes.first { $0.id == selectedChangeID }
     }
     
+    var allStaged: Bool {
+        !changes.isEmpty && changes.allSatisfy { $0.isStaged }
+    }
+    
     var commitSummary: String = ""
     var commitDescription: String = ""
     var isCommitting: Bool = false
@@ -94,6 +98,23 @@ final class RepositoryViewModel {
             commitDescription = ""
             selectedChangeID = nil
             currentDiff = nil
+            await refreshStatus()
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+    
+    func setAllStaged(_ staged: Bool) async {
+        guard let repositoryURL else { return }
+        do {
+            for change in changes {
+                if staged {
+                    try await gitService.stage(at: repositoryURL, path: change.path)
+                } else {
+                    try await gitService.unstage(at: repositoryURL, path: change.path)
+                }
+            }
             await refreshStatus()
             errorMessage = nil
         } catch {

@@ -19,12 +19,15 @@ struct ChangesSidebarView: View {
                 } else if viewModel.changes.isEmpty {
                     ContentUnavailableView("No Changes", systemImage: "checkmark.circle")
                 } else {
+                    ChangesHeaderView(viewModel: viewModel)
+                    Divider()
                     List(viewModel.changes, selection: $viewModel.selectedChangeID) { change in
                         FileChangeRow(change: change) {
                             Task { await viewModel.toggleStage(for: change)}
                         }
                         .tag(change.id)
                     }
+                    .listStyle(.sidebar)
                 }
             }
             if viewModel.repositoryURL != nil {
@@ -61,13 +64,21 @@ struct FileChangeRow: View {
             ))
             .toggleStyle(.checkbox)
             .labelsHidden()
-            Label {
-                Text(change.path)
+            
+            StatusBadge(status: change.status)
+            
+            VStack(alignment: .leading, spacing: 1) {
+                Text(change.fileName)
                     .lineLimit(1)
-            } icon: {
-                Image(systemName: symbolName)
-                    .foregroundStyle(symbolColor)
+                
+                if !change.directoryPath.isEmpty {
+                    Text(change.directoryPath)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
+            .padding(.vertical, 2)
         }
     }
 
@@ -93,3 +104,71 @@ struct FileChangeRow: View {
         }
     }
 }
+
+struct StatusBadge: View {
+    let status: FileChange.Status
+
+    var body: some View {
+        Text(letter)
+            .font(.system(size: 12, weight: .bold, design: .rounded))
+            .foregroundStyle(color.darker(bytTones: 3))
+            .frame(width: 16, height: 16)
+            .background(color, in: RoundedRectangle(cornerRadius: 4))
+    }
+
+    private var letter: String {
+        switch status {
+        case .modified: "M"
+        case .added: "A"
+        case .deleted: "D"
+        case .renamed: "R"
+        case .copied: "C"
+        case .untracked: "U"
+        case .unmerged: "!"
+        }
+    }
+
+    private var color: Color {
+        switch status {
+        case .modified: .yellow
+        case .added, .untracked: .green
+        case .deleted: .red
+        case .renamed, .copied: .blue
+        case .unmerged: .orange
+        }
+    }
+}
+
+struct ChangesHeaderView: View {
+    @Bindable var viewModel: RepositoryViewModel
+
+    var body: some View {
+        HStack {
+            Toggle("", isOn: Binding(
+                get: { viewModel.allStaged },
+                set: { newValue in Task { await viewModel.setAllStaged(newValue) } }
+            ))
+            .toggleStyle(.checkbox)
+            .labelsHidden()
+
+            Text("\(viewModel.changes.count) changed file\(viewModel.changes.count == 1 ? "" : "s")")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            Spacer()
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+    }
+}
+
+#Preview {
+    HStack {
+        
+        
+        StatusBadge(status: .deleted)
+        
+
+    }.padding(10)
+}
+
