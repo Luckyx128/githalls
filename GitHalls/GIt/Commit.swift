@@ -6,3 +6,13 @@
 //
 
 import Foundation
+
+struct Commit: Identifiable, Hashable {
+    let hash: String
+    let shortHash: String
+    let authorName: String
+    let date: Date
+    let summary: String
+
+    var id: String { hash }
+}
