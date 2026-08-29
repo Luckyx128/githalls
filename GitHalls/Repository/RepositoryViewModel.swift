@@ -8,6 +8,10 @@ import AppKit
 import Foundation
 import Observation
 
+enum SidebarMode: Hashable {
+    case changes, history
+}
+
 @Observable
 @MainActor
 final class RepositoryViewModel {
@@ -36,6 +40,10 @@ final class RepositoryViewModel {
     var isCommitting: Bool = false
     
     var recentRepositoryURLs: [URL] = RecentRepositoriesStore.load()
+    
+    var sidebarMode: SidebarMode = .changes
+    var commits: [Commit] = []
+    var selectedCommitID: Commit.ID?
     
     func pickRepository() {
         let panel = NSOpenPanel()
@@ -158,4 +166,13 @@ final class RepositoryViewModel {
         recentRepositoryURLs = RecentRepositoriesStore.load()
     }
     
+    func loadCommits() async {
+        guard let repositoryURL else { return }
+        do {
+            commits = try await gitService.log(at: repositoryURL)
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
 }

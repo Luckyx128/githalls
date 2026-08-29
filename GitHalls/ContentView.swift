@@ -13,13 +13,39 @@ struct ContentView: View {
 
     var body: some View {
         NavigationSplitView {
-            ChangesSidebarView(viewModel: viewModel)
-                .navigationSplitViewColumnWidth(min: 200, ideal: 240)
+            VStack(spacing: 0) {
+                            Picker("Mode", selection: $viewModel.sidebarMode) {
+                                Text("Changes").tag(SidebarMode.changes)
+                                Text("History").tag(SidebarMode.history)
+                            }
+                            .pickerStyle(.segmented)
+                            .labelsHidden()
+                            .padding(8)
+
+                            switch viewModel.sidebarMode {
+                            case .changes:
+                                ChangesSidebarView(viewModel: viewModel)
+                            case .history:
+                                HistorySidebarView(viewModel: viewModel)
+                            }
+                        }
+                        .navigationSplitViewColumnWidth(min: 200, ideal: 240)
         } detail: {
             DiffDetailView(viewModel: viewModel)
         }
         .task {
             viewModel.openMostRecentRepositoryIfNeeded()
+        }
+        .task {
+            viewModel.openMostRecentRepositoryIfNeeded()
+            if let url = viewModel.repositoryURL {
+                let service = GitService()
+                if let commits = try? await service.log(at: url) {
+                    for commit in commits.prefix(5) {
+                        print("\(commit.shortHash) - \(commit.summary) (\(commit.authorName), \(commit.date))")
+                    }
+                }
+            }
         }
         .toolbar {
             ToolbarItem {

@@ -111,3 +111,14 @@ extension GitService {
         return result.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
+
+extension GitService {
+    func log(at repoURL: URL, limit: Int = 100) async throws -> [Commit] {
+        let format = "%H%x1f%h%x1f%an%x1f%aI%x1f%s%x1e"
+        let result = try await run(["log", "--max-count=\(limit)", "--pretty=format:\(format)"], in: repoURL)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+        return CommitLogParser.parse(result.standardOutput)
+    }
+}

@@ -24,11 +24,17 @@ enum DiffParser {
             }
 
             if rawLine.hasPrefix("@@") {
-                let body = rawLine.split(separator: "@@")[0]      // " -12,7 +12,8 "
-                let parts = body.split(separator: " ")            // ["-12,7", "+12,8"]
+                let pieces = rawLine.split(separator: "@@")
+                let body = pieces.first ?? ""                // " -12,7 +12,8 "
+                let parts = body.split(separator: " ")        // ["-12,7", "+12,8"]
                 oldLine = Int(parts[0].dropFirst().split(separator: ",")[0]) ?? 0
                 newLine = Int(parts[1].dropFirst().split(separator: ",")[0]) ?? 0
-                lines.append(DiffLine(kind: .hunkHeader, text: String(rawLine), oldLineNumber: nil, newLineNumber: nil))
+
+                // depois do segundo "@@", o git às vezes inclui o nome da função/escopo do hunk
+                let trailingContext = pieces.count > 1 ? pieces[1].trimmingCharacters(in: .whitespaces) : ""
+                let label = trailingContext.isEmpty ? "Line \(newLine)" : "Line \(newLine) · \(trailingContext)"
+
+                lines.append(DiffLine(kind: .hunkHeader, text: label, oldLineNumber: nil, newLineNumber: nil))
                 continue
             }
 
