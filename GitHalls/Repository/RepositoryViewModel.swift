@@ -50,12 +50,17 @@ final class RepositoryViewModel {
     
     var pendingDiscard: FileChange?
 
+    var isStaging = false
+    
     // Tokens de "esta é a chamada mais recente?" — evita que uma resposta assíncrona
     // atrasada (repo/arquivo/commit trocado enquanto a chamada anterior ainda estava
     // em voo) sobrescreva o estado com dado desatualizado.
     private var statusRequestToken = UUID()
     private var diffRequestToken = UUID()
     private var commitDetailRequestToken = UUID()
+    
+    var branches: [Branch] = []
+    var isSwitchingBranch = false
 
     func requestDiscard(_ change: FileChange) {
         pendingDiscard = change
@@ -118,21 +123,6 @@ final class RepositoryViewModel {
             }
         }
     
-    func toggleStage(for change: FileChange) async {
-        guard let repositoryURL else { return }
-        do {
-            if change.isStaged {
-                try await gitService.unstage(at: repositoryURL, path: change.path)
-            }else{
-                try await gitService.stage(at: repositoryURL, path: change.path)
-            }
-            await refreshStatus()
-            errorMessage = nil
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-    
     func commit() async {
         guard let repositoryURL, !commitSummary.isEmpty else { return }
         
@@ -151,15 +141,15 @@ final class RepositoryViewModel {
         }
     }
     
-    func setAllStaged(_ staged: Bool) async {
+    func toggleStage(for change: FileChange) async {
         guard let repositoryURL else { return }
+        isStaging = true
+        defer { isStaging = false }
         do {
-            for change in changes {
-                if staged {
-                    try await gitService.stage(at: repositoryURL, path: change.path)
-                } else {
-                    try await gitService.unstage(at: repositoryURL, path: change.path)
-                }
+            if change.isStaged {
+                try await gitService.unstage(at: repositoryURL, path: change.path)
+            } else {
+                try await gitService.stage(at: repositoryURL, path: change.path)
             }
             await refreshStatus()
             errorMessage = nil
@@ -167,6 +157,25 @@ final class RepositoryViewModel {
             errorMessage = error.localizedDescription
         }
     }
+
+    func setAllStaged(_ staged: Bool) async {
+        guard let repositoryURL else { return }
+        isStaging = true
+        defer { isStaging = false }
+        do {
+            let paths = changes.map(\.path)
+            if staged {
+                try await gitService.stage(at: repositoryURL, paths: paths)
+            } else {
+                try await gitService.unstage(at: repositoryURL, paths: paths)
+            }
+            await refreshStatus()
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     
     
 
@@ -271,6 +280,55 @@ final class RepositoryViewModel {
             errorMessage = error.localizedDescription
         }
         pendingDiscard = nil
+    }
+    
+    func loadBranches() async {
+        guard let repositoryURL else { return }
+        do {
+            branches = try await gitService.branches(at: repositoryURL)
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func switchBranch(to name: String) async {
+        guard let repositoryURL else { return }
+        isSwitchingBranch = true
+        defer { isSwitchingBranch = false }
+        do {
+            try await gitService.switchBranch(at: repositoryURL, name: name)
+            selectedChangeID = nil
+            currentDiff = nil
+            selectedCommitID = nil
+            selectedCommitDetail = nil
+            await refreshStatus()
+            await loadCommits()
+            await loadBranches()
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func createBranch(named name: String) async {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard let repositoryURL, !trimmed.isEmpty else { return }
+        isSwitchingBranch = true
+        defer { isSwitchingBranch = false }
+        do {
+            try await gitService.createBranch(at: repositoryURL, name: trimmed)
+            selectedChangeID = nil
+            currentDiff = nil
+            selectedCommitID = nil
+            selectedCommitDetail = nil
+            await refreshStatus()
+            await loadCommits()
+            await loadBranches()
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 }
 

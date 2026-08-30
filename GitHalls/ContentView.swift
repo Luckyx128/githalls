@@ -10,6 +10,7 @@ import SwiftData
 
 struct ContentView: View {
     @State private var viewModel = RepositoryViewModel()
+    @State private var showBranchSwitcher = false
     
     var body: some View {
         NavigationSplitView {
@@ -55,6 +56,17 @@ struct ContentView: View {
                     viewModel.pickRepository()
                 } label: {
                     Label("Open Repository...", systemImage: "folder.badge.plus")
+                }
+            }
+            ToolbarItem {
+                Button {
+                    showBranchSwitcher = true
+                } label: {
+                    Label(viewModel.currentBranch ?? "Branch", systemImage: "arrow.triangle.branch")
+                }
+                .disabled(viewModel.repositoryURL == nil)
+                .popover(isPresented: $showBranchSwitcher) {
+                    BranchSwitcherView(viewModel: viewModel)
                 }
             }
             ToolbarItem {

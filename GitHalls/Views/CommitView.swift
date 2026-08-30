@@ -48,7 +48,7 @@ struct CommitView: View {
                 }
                 .frame(maxWidth: .infinity)
             }
-            .disabled(viewModel.commitSummary.isEmpty || !hasStagedChanges || viewModel.isCommitting)
+            .disabled(viewModel.commitSummary.isEmpty || !hasStagedChanges || viewModel.isCommitting || viewModel.isStaging)
         }
         .padding(8)
     }

@@ -185,3 +185,45 @@ extension GitService {
         }
     }
 }
+
+extension GitService {
+    func branches(at repoURL: URL) async throws -> [Branch] {
+        let result = try await run(["branch", "--list"], in: repoURL)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+        return BranchParser.parse(result.standardOutput)
+    }
+
+    func switchBranch(at repoURL: URL, name: String) async throws {
+        let result = try await run(["checkout", name], in: repoURL)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+    }
+
+    func createBranch(at repoURL: URL, name: String) async throws {
+        let result = try await run(["checkout", "-b", name], in: repoURL)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+    }
+}
+
+extension GitService {
+    func stage(at repoURL: URL, paths: [String]) async throws {
+        guard !paths.isEmpty else { return }
+        let result = try await run(["add", "--"] + paths, in: repoURL)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+    }
+
+    func unstage(at repoURL: URL, paths: [String]) async throws {
+        guard !paths.isEmpty else { return }
+        let result = try await run(["reset", "HEAD", "--"] + paths, in: repoURL)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+    }
+}
