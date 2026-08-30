@@ -227,3 +227,42 @@ extension GitService {
         }
     }
 }
+
+extension GitService {
+    func fetch(at repoURL: URL) async throws {
+        let result = try await run(["fetch"], in: repoURL)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+    }
+
+    func pull(at repoURL: URL) async throws {
+        let result = try await run(["pull"], in: repoURL)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+    }
+
+    func push(at repoURL: URL, branch: String) async throws {
+        let result = try await run(["push", "-u", "origin", branch], in: repoURL)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+    }
+}
+
+extension GitService {
+    func branchSync(at repoURL: URL) async throws -> (ahead: Int, behind: Int)? {
+        let result = try await run(["status", "--porcelain=v2", "--branch"], in: repoURL)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+        for line in result.standardOutput.split(separator: "\n") {
+            guard line.hasPrefix("# branch.ab ") else { continue }
+            let parts = line.dropFirst("# branch.ab ".count).split(separator: " ")
+            guard parts.count == 2, let ahead = Int(parts[0]), let behindRaw = Int(parts[1]) else { continue }
+            return (ahead, abs(behindRaw))
+        }
+        return nil // sem upstream configurado (branch nova, nunca publicada)
+    }
+}

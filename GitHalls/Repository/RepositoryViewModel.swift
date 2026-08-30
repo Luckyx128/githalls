@@ -70,6 +70,13 @@ final class RepositoryViewModel {
         pendingDiscard = nil
     }
     
+    var syncAhead = 0
+    var syncBehind = 0
+    var hasUpstream = false
+    var isFetching = false
+    var isPulling = false
+    var isPushing = false
+    
     func pickRepository() {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
@@ -83,23 +90,31 @@ final class RepositoryViewModel {
     
     
     func refreshStatus() async {
-            guard let repositoryURL else { return }
-            let token = UUID()
-            statusRequestToken = token
-            do {
-                let newChanges = try await gitService.status(at: repositoryURL)
-                let branch = try? await gitService.currentBranch(at: repositoryURL)
-                // Uma chamada mais nova (outro repo aberto, refresh disparado de novo) já rodou
-                // enquanto esta esperava o git — descarta este resultado desatualizado.
-                guard statusRequestToken == token else { return }
-                changes = newChanges
-                currentBranch = branch
-                errorMessage = nil
-            } catch {
-                guard statusRequestToken == token else { return }
-                errorMessage = error.localizedDescription
+        guard let repositoryURL else { return }
+        let token = UUID()
+        statusRequestToken = token
+        do {
+            let newChanges = try await gitService.status(at: repositoryURL)
+            let branch = try? await gitService.currentBranch(at: repositoryURL)
+            let sync = try? await gitService.branchSync(at: repositoryURL)
+            guard statusRequestToken == token else { return }
+            changes = newChanges
+            currentBranch = branch
+            if let sync {
+                syncAhead = sync.ahead
+                syncBehind = sync.behind
+                hasUpstream = true
+            } else {
+                syncAhead = 0
+                syncBehind = 0
+                hasUpstream = false
             }
+            errorMessage = nil
+        } catch {
+            guard statusRequestToken == token else { return }
+            errorMessage = error.localizedDescription
         }
+    }
 
     func loadDiff() async {
             guard let repositoryURL, let selectedChange else {
@@ -325,6 +340,48 @@ final class RepositoryViewModel {
             await refreshStatus()
             await loadCommits()
             await loadBranches()
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+    
+    func fetch() async {
+        guard let repositoryURL else { return }
+        isFetching = true
+        defer { isFetching = false }
+        do {
+            try await gitService.fetch(at: repositoryURL)
+            await refreshStatus()
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func pull() async {
+        guard let repositoryURL else { return }
+        isPulling = true
+        defer { isPulling = false }
+        do {
+            try await gitService.pull(at: repositoryURL)
+            selectedChangeID = nil
+            currentDiff = nil
+            await refreshStatus()
+            await loadCommits()
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func push() async {
+        guard let repositoryURL, let branch = currentBranch else { return }
+        isPushing = true
+        defer { isPushing = false }
+        do {
+            try await gitService.push(at: repositoryURL, branch: branch)
+            await refreshStatus()
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription

@@ -44,13 +44,17 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             Task {
-                await viewModel.refreshStatus()
+                await viewModel.fetch()
                 if viewModel.selectedChangeID != nil {
                     await viewModel.loadDiff()
                 }
             }
         }
         .toolbar {
+            ToolbarItem {
+                SyncButton(viewModel: viewModel)
+                    .disabled(viewModel.repositoryURL == nil)
+            }
             ToolbarItem {
                 Button {
                     viewModel.pickRepository()
