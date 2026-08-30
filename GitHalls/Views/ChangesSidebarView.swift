@@ -45,7 +45,8 @@ struct ChangesSidebarView: View {
                         }
                         .padding()
                     }                } else if viewModel.changes.isEmpty {
-                    ContentUnavailableView("No Changes", systemImage: "checkmark.circle")
+                        ContentUnavailableView("No Changes", systemImage: "checkmark.circle")
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ChangesHeaderView(viewModel: viewModel)
                     Divider()
