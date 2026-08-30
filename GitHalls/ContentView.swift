@@ -6,29 +6,32 @@
 //
 
 import SwiftUI
-import SwiftData
 
 struct ContentView: View {
     @State private var viewModel = RepositoryViewModel()
+    @State private var jiraViewModel = JiraViewModel()
     @State private var showBranchSwitcher = false
     @State private var showMergeSheet = false
-    
+
     var body: some View {
         NavigationSplitView {
             VStack(spacing: 0) {
                             Picker("Mode", selection: $viewModel.sidebarMode) {
                                 Text("Changes").tag(SidebarMode.changes)
                                 Text("History").tag(SidebarMode.history)
+                                Text("Kanban").tag(SidebarMode.kanban)
                             }
                             .pickerStyle(.segmented)
                             .labelsHidden()
                             .padding(8)
 
-                            switch viewModel.sidebarMode { 
+                            switch viewModel.sidebarMode {
                             case .changes:
                                 ChangesSidebarView(viewModel: viewModel)
                             case .history:
                                 HistorySidebarView(viewModel: viewModel)
+                            case .kanban:
+                                KanbanSidebarView(viewModel: jiraViewModel)
                             }
                         }
                         .navigationSplitViewColumnWidth(min: 200, ideal: 240)
@@ -38,6 +41,8 @@ struct ContentView: View {
                 DiffDetailView(viewModel: viewModel)
             case .history:
                 CommitDetailView(viewModel: viewModel)
+            case .kanban:
+                IssueDetailView(jiraViewModel: jiraViewModel, repositoryViewModel: viewModel)
             }
         }
         .task {

@@ -9,7 +9,7 @@ import Foundation
 import Observation
 
 enum SidebarMode: Hashable {
-    case changes, history
+    case changes, history, kanban
 }
 
 @Observable
