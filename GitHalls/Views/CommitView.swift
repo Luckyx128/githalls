@@ -41,7 +41,7 @@ struct CommitView: View {
                     if viewModel.isCommitting {
                         ProgressView()
                             .controlSize(.small)
-                    } else {
+                    } else { 
                         Image(systemName: "checkmark.circle.fill")
                     }
                     Text(commitButtonTitle)

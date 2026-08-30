@@ -12,7 +12,7 @@ enum GitError: LocalizedError {
     case gitNotFound
     case commandFailed(exitCode: Int32, message: String)
     
-    var errorDescription: String? {
+    var errorDescription: String? { 
         switch self {
         case .failedToLaunch(let underlying):
             "Couldn't launch git: \(underlying.localizedDescription)"

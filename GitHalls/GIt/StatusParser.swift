@@ -15,7 +15,7 @@ enum StatusParser {
     
     private static func parseLine(_ line: Substring) -> FileChange? {
         guard line.count > 3 else { return nil}
-        let chars = Array(line)
+        let chars = Array(line) 
         let indexStatus = chars[0]
         let worktreeStatus = chars[1]
         let rest = String(chars[3...])
