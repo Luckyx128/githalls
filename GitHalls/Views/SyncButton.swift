@@ -12,32 +12,53 @@ struct SyncButton: View {
     @Bindable var viewModel: RepositoryViewModel
 
     var body: some View {
-        Group {
-            if viewModel.isFetching || viewModel.isPulling || viewModel.isPushing {
-                ProgressView()
-                    .controlSize(.small)
-            } else if !viewModel.hasUpstream {
-                Button {
-                    Task { await viewModel.push() }
-                } label: {
-                    Label("Publish Branch", systemImage: "arrow.up.circle")
+        Button {
+            performAction()
+        } label: {
+            HStack(spacing: 4) {
+                Group {
+                    if isLoading {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Image(systemName: iconName)
+                    }
                 }
-            } else if viewModel.syncAhead > 0 {
-                Button {
-                    Task { await viewModel.push() }
-                } label: {
-                    Label("Push (\(viewModel.syncAhead))", systemImage: "arrow.up.circle")
-                }
-            } else if viewModel.syncBehind > 0 {
-                Button {
-                    Task { await viewModel.pull() }
-                } label: {
-                    Label("Pull (\(viewModel.syncBehind))", systemImage: "arrow.down.circle")
-                }
-            } else {
-                Label("Up to date", systemImage: "checkmark.circle")
-                    .foregroundStyle(.secondary)
+                .frame(width: 16, height: 16)
+
+                Text(title)
             }
+            .frame(minWidth: 96, alignment: .leading)
+        }
+        .disabled(isLoading || !isActionable)
+    }
+
+    private var isLoading: Bool {
+        viewModel.isFetching || viewModel.isPulling || viewModel.isPushing
+    }
+
+    private var isActionable: Bool {
+        !viewModel.hasUpstream || viewModel.syncAhead > 0 || viewModel.syncBehind > 0
+    }
+
+    private var title: String {
+        if !viewModel.hasUpstream { return "Publish Branch" }
+        if viewModel.syncAhead > 0 { return "Push (\(viewModel.syncAhead))" }
+        if viewModel.syncBehind > 0 { return "Pull (\(viewModel.syncBehind))" }
+        return "Up to date"
+    }
+
+    private var iconName: String {
+        if !viewModel.hasUpstream || viewModel.syncAhead > 0 { return "arrow.up.circle" }
+        if viewModel.syncBehind > 0 { return "arrow.down.circle" }
+        return "checkmark.circle"
+    }
+
+    private func performAction() {
+        if !viewModel.hasUpstream || viewModel.syncAhead > 0 {
+            Task { await viewModel.push() }
+        } else if viewModel.syncBehind > 0 {
+            Task { await viewModel.pull() }
         }
     }
 }
