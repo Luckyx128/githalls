@@ -15,38 +15,38 @@ struct ChangesSidebarView: View {
         VStack(spacing: 0) {
             Group {
                 if viewModel.repositoryURL == nil {
-                    if viewModel.repositoryURL == nil {
-                        VStack(spacing: 16) {
-                            ContentUnavailableView("No Repository Open", systemImage: "folder", description: Text("Use \"Open Repository…\" to get started."))
+                    VStack(spacing: 16) {
+                        ContentUnavailableView("No Repository Open", systemImage: "folder", description: Text("Use \"Open Repository…\" to get started."))
 
-                            if !viewModel.recentRepositoryURLs.isEmpty {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("RECENT")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
+                        if !viewModel.recentRepositoryURLs.isEmpty {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("RECENT")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
 
-                                    ForEach(viewModel.recentRepositoryURLs, id: \.self) { url in
-                                        Button {
-                                            viewModel.open(url)
-                                        } label: {
-                                            Label(url.lastPathComponent, systemImage: "clock")
-                                                .lineLimit(1)
-                                        }
-                                        .buttonStyle(.plain)
-                                        .contextMenu {
-                                            Button("Remove from Recents", role: .destructive) {
-                                                viewModel.forgetRecent(url)
-                                            }
+                                ForEach(viewModel.recentRepositoryURLs, id: \.self) { url in
+                                    Button {
+                                        viewModel.open(url)
+                                    } label: {
+                                        Label(url.lastPathComponent, systemImage: "clock")
+                                            .lineLimit(1)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .contextMenu {
+                                        Button("Remove from Recents", role: .destructive) {
+                                            viewModel.forgetRecent(url)
                                         }
                                     }
                                 }
-                                .padding(.horizontal)
                             }
+                            .padding(.horizontal)
                         }
-                        .padding()
-                    }                } else if viewModel.changes.isEmpty {
-                        ContentUnavailableView("No Changes", systemImage: "checkmark.circle")
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if viewModel.changes.isEmpty {
+                    ContentUnavailableView("No Changes", systemImage: "checkmark.circle")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ChangesHeaderView(viewModel: viewModel)
                     Divider()
