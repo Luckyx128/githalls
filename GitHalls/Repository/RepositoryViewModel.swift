@@ -211,8 +211,8 @@ final class RepositoryViewModel {
         }
     }
     
-    func confirmDiscard() async {
-        guard let repositoryURL, let change = pendingDiscard else { return }
+    func confirmDiscard(_ change: FileChange) async {
+        guard let repositoryURL else { return }
         do {
             try await gitService.discard(at: repositoryURL, change: change)
             if selectedChangeID == change.id {

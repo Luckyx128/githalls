@@ -91,7 +91,9 @@ struct ChangesSidebarView: View {
             titleVisibility: .visible
         ) {
             Button("Discard Changes", role: .destructive) {
-                Task { await viewModel.confirmDiscard() }
+                if let change = viewModel.pendingDiscard {
+                    Task { await viewModel.confirmDiscard(change) }
+                }
             }
             Button("Cancel", role: .cancel) {
                 viewModel.cancelDiscard()
