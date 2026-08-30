@@ -152,10 +152,30 @@ extension GitService {
                 throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
             }
         case .added:
-            _ = try await run(["reset", "HEAD", "--", change.path], in: repoURL)
+            let resetResult = try await run(["reset", "HEAD", "--", change.path], in: repoURL)
+            guard resetResult.terminationStatus == 0 else {
+                throw GitError.commandFailed(exitCode: resetResult.terminationStatus, message: resetResult.standardError)
+            }
             let result = try await run(["clean", "-f", "--", change.path], in: repoURL)
             guard result.terminationStatus == 0 else {
                 throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+            }
+        case .renamed, .copied:
+            // O path novo não existe no HEAD (só o antigo) — "checkout HEAD -- path" falharia.
+            // Desfaz o rename: descarta o path novo e restaura o conteúdo original no path antigo.
+            let resetResult = try await run(["reset", "HEAD", "--", change.path], in: repoURL)
+            guard resetResult.terminationStatus == 0 else {
+                throw GitError.commandFailed(exitCode: resetResult.terminationStatus, message: resetResult.standardError)
+            }
+            let cleanResult = try await run(["clean", "-f", "--", change.path], in: repoURL)
+            guard cleanResult.terminationStatus == 0 else {
+                throw GitError.commandFailed(exitCode: cleanResult.terminationStatus, message: cleanResult.standardError)
+            }
+            if let originalPath = change.originalPath {
+                let restoreResult = try await run(["checkout", "HEAD", "--", originalPath], in: repoURL)
+                guard restoreResult.terminationStatus == 0 else {
+                    throw GitError.commandFailed(exitCode: restoreResult.terminationStatus, message: restoreResult.standardError)
+                }
             }
         default:
             let result = try await run(["checkout", "HEAD", "--", change.path], in: repoURL)

@@ -50,6 +50,13 @@ final class RepositoryViewModel {
     
     var pendingDiscard: FileChange?
 
+    // Tokens de "esta é a chamada mais recente?" — evita que uma resposta assíncrona
+    // atrasada (repo/arquivo/commit trocado enquanto a chamada anterior ainda estava
+    // em voo) sobrescreva o estado com dado desatualizado.
+    private var statusRequestToken = UUID()
+    private var diffRequestToken = UUID()
+    private var commitDetailRequestToken = UUID()
+
     func requestDiscard(_ change: FileChange) {
         pendingDiscard = change
     }
@@ -72,26 +79,40 @@ final class RepositoryViewModel {
     
     func refreshStatus() async {
             guard let repositoryURL else { return }
+            let token = UUID()
+            statusRequestToken = token
             do {
-                changes = try await gitService.status(at: repositoryURL)
-                currentBranch = try? await gitService.currentBranch(at: repositoryURL)
+                let newChanges = try await gitService.status(at: repositoryURL)
+                let branch = try? await gitService.currentBranch(at: repositoryURL)
+                // Uma chamada mais nova (outro repo aberto, refresh disparado de novo) já rodou
+                // enquanto esta esperava o git — descarta este resultado desatualizado.
+                guard statusRequestToken == token else { return }
+                changes = newChanges
+                currentBranch = branch
                 errorMessage = nil
             } catch {
+                guard statusRequestToken == token else { return }
                 errorMessage = error.localizedDescription
             }
         }
-    
+
     func loadDiff() async {
             guard let repositoryURL, let selectedChange else {
                 currentDiff = nil
                 return
             }
+            let token = UUID()
+            diffRequestToken = token
             isLoadingDiff = true
-            defer { isLoadingDiff = false }
+            defer { if diffRequestToken == token { isLoadingDiff = false } }
             do {
-                currentDiff = try await gitService.diff(at: repositoryURL, for: selectedChange)
+                let diff = try await gitService.diff(at: repositoryURL, for: selectedChange)
+                // O usuário já selecionou outro arquivo enquanto este diff carregava — ignora.
+                guard diffRequestToken == token else { return }
+                currentDiff = diff
                 errorMessage = nil
             } catch {
+                guard diffRequestToken == token else { return }
                 currentDiff = nil
                 errorMessage = error.localizedDescription
             }
@@ -153,6 +174,11 @@ final class RepositoryViewModel {
         repositoryURL = url
         selectedChangeID = nil
         currentDiff = nil
+        commits = []
+        selectedCommitID = nil
+        selectedCommitDetail = nil
+        isLoadingCommitDetail = false
+        pendingDiscard = nil
         RecentRepositoriesStore.addOrPromote(url)
         recentRepositoryURLs = RecentRepositoriesStore.load()
         Task { await refreshStatus() }
@@ -172,6 +198,11 @@ final class RepositoryViewModel {
         commitSummary = ""
         commitDescription = ""
         errorMessage = nil
+        commits = []
+        selectedCommitID = nil
+        selectedCommitDetail = nil
+        isLoadingCommitDetail = false
+        pendingDiscard = nil
     }
 
     func forgetRecent(_ url: URL) {
@@ -195,27 +226,42 @@ final class RepositoryViewModel {
             selectedCommitDetail = nil
             return
         }
+        let token = UUID()
+        commitDetailRequestToken = token
         isLoadingCommitDetail = true
-        defer { isLoadingCommitDetail = false }
+        defer { if commitDetailRequestToken == token { isLoadingCommitDetail = false } }
         do {
             let paths = try await gitService.changedPaths(at: repositoryURL, hash: hash)
             var diffs: [FileDiff] = []
             for path in paths {
                 diffs.append(try await gitService.commitFileDiff(at: repositoryURL, hash: hash, path: path))
             }
+            // O usuário já selecionou outro commit (ou fechou/trocou de repo) enquanto isso carregava.
+            guard commitDetailRequestToken == token else { return }
             selectedCommitDetail = CommitDetail(commit: commit, fileDiffs: diffs)
             errorMessage = nil
         } catch {
+            guard commitDetailRequestToken == token else { return }
             selectedCommitDetail = nil
             errorMessage = error.localizedDescription
         }
     }
-    
+
     func confirmDiscard(_ change: FileChange) async {
-        guard let repositoryURL else { return }
+        guard let repositoryURL else {
+            pendingDiscard = nil
+            return
+        }
+        // Revalida contra o status atual antes de uma ação destrutiva — o arquivo pode ter
+        // mudado de estado no tempo entre o clique direito e a confirmação do diálogo.
+        await refreshStatus()
+        guard let currentChange = changes.first(where: { $0.path == change.path }) else {
+            pendingDiscard = nil
+            return
+        }
         do {
-            try await gitService.discard(at: repositoryURL, change: change)
-            if selectedChangeID == change.id {
+            try await gitService.discard(at: repositoryURL, change: currentChange)
+            if selectedChangeID == currentChange.id {
                 selectedChangeID = nil
                 currentDiff = nil
             }
