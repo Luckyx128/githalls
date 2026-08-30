@@ -53,6 +53,7 @@ struct ContentView: View {
         .toolbar {
             ToolbarItem {
                 SyncButton(viewModel: viewModel)
+                    .buttonStyle(.glassProminent)
                     .disabled(viewModel.repositoryURL == nil)
             }
             ToolbarItem {
