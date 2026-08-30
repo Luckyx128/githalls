@@ -10,7 +10,7 @@ import SwiftData
 
 struct ContentView: View {
     @State private var viewModel = RepositoryViewModel()
-
+    
     var body: some View {
         NavigationSplitView {
             VStack(spacing: 0) {
@@ -22,7 +22,7 @@ struct ContentView: View {
                             .labelsHidden()
                             .padding(8)
 
-                            switch viewModel.sidebarMode {
+                            switch viewModel.sidebarMode { 
                             case .changes:
                                 ChangesSidebarView(viewModel: viewModel)
                             case .history:
@@ -36,14 +36,11 @@ struct ContentView: View {
         .task {
             viewModel.openMostRecentRepositoryIfNeeded()
         }
-        .task {
-            viewModel.openMostRecentRepositoryIfNeeded()
-            if let url = viewModel.repositoryURL {
-                let service = GitService()
-                if let commits = try? await service.log(at: url) {
-                    for commit in commits.prefix(5) {
-                        print("\(commit.shortHash) - \(commit.summary) (\(commit.authorName), \(commit.date))")
-                    }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Task {
+                await viewModel.refreshStatus()
+                if viewModel.selectedChangeID != nil {
+                    await viewModel.loadDiff()
                 }
             }
         }

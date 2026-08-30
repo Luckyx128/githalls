@@ -9,6 +9,10 @@ import Foundation
 
 enum DiffParser {
     static func parse(_ raw: String) -> FileDiff {
+        guard !raw.isEmpty else {
+            return FileDiff(path: "", lines: [])
+        }
+        
         var lines: [DiffLine] = []
         var oldLine = 0
         var newLine = 0
