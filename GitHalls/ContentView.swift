@@ -31,7 +31,12 @@ struct ContentView: View {
                         }
                         .navigationSplitViewColumnWidth(min: 200, ideal: 240)
         } detail: {
-            DiffDetailView(viewModel: viewModel)
+            switch viewModel.sidebarMode {
+            case .changes:
+                DiffDetailView(viewModel: viewModel)
+            case .history:
+                CommitDetailView(viewModel: viewModel)
+            }
         }
         .task {
             viewModel.openMostRecentRepositoryIfNeeded()

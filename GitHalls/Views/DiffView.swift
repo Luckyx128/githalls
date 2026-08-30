@@ -13,10 +13,18 @@ struct DiffView: View {
 
     var body: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                ForEach(diff.lines) { line in
-                    DiffLineRow(line: line)
-                }
+            DiffLinesView(diff: diff)
+        }
+    }
+}
+
+struct DiffLinesView: View {
+    let diff: FileDiff
+
+    var body: some View {
+        LazyVStack(alignment: .leading, spacing: 0) {
+            ForEach(diff.lines) { line in
+                DiffLineRow(line: line)
             }
         }
     }

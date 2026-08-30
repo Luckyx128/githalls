@@ -115,10 +115,30 @@ extension GitService {
 extension GitService {
     func log(at repoURL: URL, limit: Int = 100) async throws -> [Commit] {
         let format = "%H%x1f%h%x1f%an%x1f%aI%x1f%s%x1e"
-        let result = try await run(["log", "--max-count=\(limit)", "--pretty=format:\(format)"], in: repoURL)
+        let result = try await run(["log", "--max-count=\(limit)", "--pretty=tformat:\(format)"], in: repoURL)
         guard result.terminationStatus == 0 else {
             throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
         }
         return CommitLogParser.parse(result.standardOutput)
+    }
+}
+
+extension GitService {
+    func changedPaths(at repoURL: URL, hash: String) async throws -> [String] {
+        let result = try await run(["show", "--pretty=format:", "--name-only", hash], in: repoURL)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+        return result.standardOutput
+            .split(separator: "\n")
+            .map(String.init)
+    }
+
+    func commitFileDiff(at repoURL: URL, hash: String, path: String) async throws -> FileDiff {
+        let result = try await run(["show", "--no-color", "--pretty=format:", hash, "--", path], in: repoURL)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+        return DiffParser.parse(result.standardOutput)
     }
 }

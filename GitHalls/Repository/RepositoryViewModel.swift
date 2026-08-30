@@ -45,6 +45,9 @@ final class RepositoryViewModel {
     var commits: [Commit] = []
     var selectedCommitID: Commit.ID?
     
+    var selectedCommitDetail: CommitDetail?
+    var isLoadingCommitDetail = false
+    
     func pickRepository() {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
@@ -172,6 +175,28 @@ final class RepositoryViewModel {
             commits = try await gitService.log(at: repositoryURL)
             errorMessage = nil
         } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+    
+    func loadCommitDetail() async {
+        guard let repositoryURL, let hash = selectedCommitID,
+              let commit = commits.first(where: { $0.id == hash }) else {
+            selectedCommitDetail = nil
+            return
+        }
+        isLoadingCommitDetail = true
+        defer { isLoadingCommitDetail = false }
+        do {
+            let paths = try await gitService.changedPaths(at: repositoryURL, hash: hash)
+            var diffs: [FileDiff] = []
+            for path in paths {
+                diffs.append(try await gitService.commitFileDiff(at: repositoryURL, hash: hash, path: path))
+            }
+            selectedCommitDetail = CommitDetail(commit: commit, fileDiffs: diffs)
+            errorMessage = nil
+        } catch {
+            selectedCommitDetail = nil
             errorMessage = error.localizedDescription
         }
     }

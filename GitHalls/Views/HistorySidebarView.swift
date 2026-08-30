@@ -26,6 +26,9 @@ struct HistorySidebarView: View {
         .task(id: viewModel.repositoryURL) {
             await viewModel.loadCommits()
         }
+        .onChange(of: viewModel.selectedCommitID) {
+            Task { await viewModel.loadCommitDetail() }
+        }
     }
 }
 

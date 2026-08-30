@@ -16,3 +16,8 @@ struct Commit: Identifiable, Hashable {
 
     var id: String { hash }
 }
+
+struct CommitDetail {
+    let commit: Commit
+    let fileDiffs: [FileDiff]
+}
