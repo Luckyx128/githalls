@@ -48,6 +48,7 @@ struct CommitView: View {
                 }
                 .frame(maxWidth: .infinity)
             }
+            .buttonStyle(.glassProminent)
             .disabled(viewModel.commitSummary.isEmpty || !hasStagedChanges || viewModel.isCommitting || viewModel.isStaging)
         }
         .padding(8)
