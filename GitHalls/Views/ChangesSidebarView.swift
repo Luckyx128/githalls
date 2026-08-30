@@ -54,6 +54,11 @@ struct ChangesSidebarView: View {
                             Task { await viewModel.toggleStage(for: change)}
                         }
                         .tag(change.id)
+                        .contextMenu {
+                            Button("Discard Changes", role: .destructive) {
+                                viewModel.requestDiscard(change)
+                            }
+                        }
                     }
                     .listStyle(.sidebar)
                 }
@@ -76,6 +81,23 @@ struct ChangesSidebarView: View {
             Button("OK") { viewModel.errorMessage = nil }
         } message: {
             Text(viewModel.errorMessage ?? "")
+        }
+        .confirmationDialog(
+            "Discard changes to \"\(viewModel.pendingDiscard?.fileName ?? "")\"?",
+            isPresented: Binding(
+                get: { viewModel.pendingDiscard != nil },
+                set: { if !$0 { viewModel.cancelDiscard() } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Discard Changes", role: .destructive) {
+                Task { await viewModel.confirmDiscard() }
+            }
+            Button("Cancel", role: .cancel) {
+                viewModel.cancelDiscard()
+            }
+        } message: {
+            Text("This cannot be undone.")
         }
     }
 }

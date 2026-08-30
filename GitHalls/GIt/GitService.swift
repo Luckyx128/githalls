@@ -142,3 +142,26 @@ extension GitService {
         return DiffParser.parse(result.standardOutput)
     }
 }
+
+extension GitService {
+    func discard(at repoURL: URL, change: FileChange) async throws {
+        switch change.status {
+        case .untracked:
+            let result = try await run(["clean", "-f", "--", change.path], in: repoURL)
+            guard result.terminationStatus == 0 else {
+                throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+            }
+        case .added:
+            _ = try await run(["reset", "HEAD", "--", change.path], in: repoURL)
+            let result = try await run(["clean", "-f", "--", change.path], in: repoURL)
+            guard result.terminationStatus == 0 else {
+                throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+            }
+        default:
+            let result = try await run(["checkout", "HEAD", "--", change.path], in: repoURL)
+            guard result.terminationStatus == 0 else {
+                throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+            }
+        }
+    }
+}

@@ -48,6 +48,16 @@ final class RepositoryViewModel {
     var selectedCommitDetail: CommitDetail?
     var isLoadingCommitDetail = false
     
+    var pendingDiscard: FileChange?
+
+    func requestDiscard(_ change: FileChange) {
+        pendingDiscard = change
+    }
+
+    func cancelDiscard() {
+        pendingDiscard = nil
+    }
+    
     func pickRepository() {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
@@ -200,4 +210,21 @@ final class RepositoryViewModel {
             errorMessage = error.localizedDescription
         }
     }
+    
+    func confirmDiscard() async {
+        guard let repositoryURL, let change = pendingDiscard else { return }
+        do {
+            try await gitService.discard(at: repositoryURL, change: change)
+            if selectedChangeID == change.id {
+                selectedChangeID = nil
+                currentDiff = nil
+            }
+            await refreshStatus()
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        pendingDiscard = nil
+    }
 }
+
