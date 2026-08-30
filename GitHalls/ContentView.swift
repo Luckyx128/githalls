@@ -11,6 +11,7 @@ import SwiftData
 struct ContentView: View {
     @State private var viewModel = RepositoryViewModel()
     @State private var showBranchSwitcher = false
+    @State private var showMergeSheet = false
     
     var body: some View {
         NavigationSplitView {
@@ -55,6 +56,17 @@ struct ContentView: View {
                 SyncButton(viewModel: viewModel)
                     .buttonStyle(.glassProminent)
                     .disabled(viewModel.repositoryURL == nil)
+            }
+            ToolbarItem {
+                Button {
+                    showMergeSheet = true
+                } label: {
+                    Label("Merge", systemImage: "arrow.triangle.merge")
+                }
+                .disabled(viewModel.repositoryURL == nil)
+                .sheet(isPresented: $showMergeSheet) {
+                    MergeSheetView(viewModel: viewModel)
+                }
             }
             ToolbarItem {
                 Button {

@@ -77,6 +77,8 @@ final class RepositoryViewModel {
     var isPulling = false
     var isPushing = false
     
+    var isMerging = false
+
     func pickRepository() {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
@@ -385,6 +387,25 @@ final class RepositoryViewModel {
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+    
+    func merge(branch: String) async {
+        guard let repositoryURL else { return }
+        isMerging = true
+        defer { isMerging = false }
+        do {
+            try await gitService.merge(at: repositoryURL, branch: branch)
+            selectedChangeID = nil
+            currentDiff = nil
+            await refreshStatus()
+            await loadCommits()
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+            // Mesmo em conflito, atualiza a lista — os arquivos em conflito aparecem
+            // com o badge "!" (status .unmerged, que já existe desde o milestone 1).
+            await refreshStatus()
         }
     }
 }

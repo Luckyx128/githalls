@@ -266,3 +266,11 @@ extension GitService {
         return nil // sem upstream configurado (branch nova, nunca publicada)
     }
 }
+extension GitService {
+    func merge(at repoURL: URL, branch: String) async throws {
+        let result = try await run(["merge", branch], in: repoURL)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+    }
+}
