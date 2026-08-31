@@ -10,9 +10,16 @@ import SwiftUI
 
 struct CommitView: View {
     @Bindable var viewModel: RepositoryViewModel
+    @State private var selectedType: ConventionalCommitType?
+    @State private var scope: String = ""
+    @State private var showTypeReference = false
+
+    private var stagedChanges: [FileChange] {
+        viewModel.changes.filter(\.isStaged)
+    }
 
     private var hasStagedChanges: Bool {
-        viewModel.changes.contains { $0.isStaged }
+        !stagedChanges.isEmpty
     }
 
     private var commitButtonTitle: String {
@@ -27,6 +34,43 @@ struct CommitView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Picker("", selection: $selectedType) {
+                    Text("Type").tag(ConventionalCommitType?.none)
+                    ForEach(ConventionalCommitType.allCases) { type in
+                        Text(type.rawValue).tag(ConventionalCommitType?.some(type))
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 100)
+                .onChange(of: selectedType) { applyPrefix() }
+
+                TextField("scope", text: $scope)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 90)
+                    .onSubmit { applyPrefix() }
+
+                Button {
+                    showTypeReference = true
+                } label: {
+                    Image(systemName: "questionmark.circle")
+                }
+                .buttonStyle(.borderless)
+                .popover(isPresented: $showTypeReference) {
+                    ConventionalCommitReferenceView()
+                }
+
+                Spacer()
+
+                Button {
+                    applySuggestion()
+                } label: {
+                    Label("Suggest", systemImage: "wand.and.stars")
+                }
+                .buttonStyle(.glass)
+                .disabled(!hasStagedChanges)
+            }
+
             TextField("Summary", text: $viewModel.commitSummary)
                 .textFieldStyle(.roundedBorder)
 
@@ -41,7 +85,7 @@ struct CommitView: View {
                     if viewModel.isCommitting {
                         ProgressView()
                             .controlSize(.small)
-                    } else { 
+                    } else {
                         Image(systemName: "checkmark.circle.fill")
                     }
                     Text(commitButtonTitle)
@@ -53,4 +97,31 @@ struct CommitView: View {
         }
         .padding(8)
     }
+
+    private func applyPrefix() {
+        guard let selectedType else { return }
+        let trimmedScope = scope.trimmingCharacters(in: .whitespaces)
+        let scopePart = trimmedScope.isEmpty ? "" : "(\(trimmedScope))"
+        let prefix = "\(selectedType.rawValue)\(scopePart): "
+        
+        if let colonRange = viewModel.commitSummary.range(of: ": ") {
+            let rest = viewModel.commitSummary[colonRange.upperBound...]
+            viewModel.commitSummary = prefix + rest
+        } else if viewModel.commitSummary.isEmpty {
+            viewModel.commitSummary = prefix
+        } else {
+            viewModel.commitSummary = prefix + viewModel.commitSummary
+        }
+    }
+
+    private func applySuggestion() {
+        selectedType = ConventionalCommitSuggester.suggestedType(for: stagedChanges)
+        scope = ConventionalCommitSuggester.suggestedScope(for: stagedChanges) ?? ""
+        applyPrefix()
+    }
+}
+
+
+#Preview {
+    CommitView(viewModel:RepositoryViewModel() )
 }

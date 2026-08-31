@@ -35,7 +35,7 @@ struct ContentView: View {
                                 KanbanSidebarView(viewModel: jiraViewModel)
                             }
                         }
-                        .navigationSplitViewColumnWidth(min: 200, ideal: 240)
+                        .navigationSplitViewColumnWidth(min: 240, ideal: 280)
         } detail: {
             switch viewModel.sidebarMode {
             case .changes:
@@ -64,17 +64,6 @@ struct ContentView: View {
                     .disabled(viewModel.repositoryURL == nil)
             }
             ToolbarItem {
-                Button {
-                    showMergeSheet = true
-                } label: {
-                    Label("Merge", systemImage: "arrow.triangle.merge")
-                }
-                .disabled(viewModel.repositoryURL == nil)
-                .sheet(isPresented: $showMergeSheet) {
-                    MergeSheetView(viewModel: viewModel)
-                }
-            }
-            ToolbarItem {
                 Menu {
                     Button("Open Repository…") {
                         viewModel.pickRepository()
@@ -97,6 +86,17 @@ struct ContentView: View {
                 }
                 .sheet(isPresented: $showCloneSheet) {
                     CloneSheetView(viewModel: viewModel)
+                }
+            }
+            ToolbarItem {
+                Button {
+                    showMergeSheet = true
+                } label: {
+                    Label("Merge", systemImage: "arrow.triangle.merge")
+                }
+                .disabled(viewModel.repositoryURL == nil)
+                .sheet(isPresented: $showMergeSheet) {
+                    MergeSheetView(viewModel: viewModel)
                 }
             }
             ToolbarItem {
