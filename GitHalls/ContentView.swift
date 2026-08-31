@@ -133,7 +133,7 @@ struct ContentView: View {
             }
             ToolbarItem {
                 Button {
-                    viewModel.closeRepository()
+                    viewModel.closeRepository()  
                 } label: {
                     Label("Close Repository", systemImage: "xmark.circle")
                 }
