@@ -8,7 +8,10 @@
 import Foundation
 
 enum ConventionalCommitSuggester {
-    static func suggestedType(for changes: [FileChange]) -> ConventionalCommitType {
+    static func suggestedType(
+        for changes: [FileChange],
+        numstat: [String: (additions: Int, deletions: Int)] = [:]
+    ) -> ConventionalCommitType {
         guard !changes.isEmpty else { return .chore }
         let paths = changes.map(\.path)
 
@@ -23,6 +26,27 @@ enum ConventionalCommitSuggester {
         }
         if changes.allSatisfy({ $0.status == .deleted }) {
             return .chore
+        }
+        if changes.allSatisfy({ $0.status == .renamed || $0.status == .copied }) {
+            return .refactor
+        }
+
+        let totals = changes.reduce((additions: 0, deletions: 0)) { acc, change in
+            let stat = numstat[change.path] ?? (0, 0)
+            return (acc.additions + stat.additions, acc.deletions + stat.deletions)
+        }
+        return suggestedType(forModifiedTotals: totals)
+    }
+
+    private static func suggestedType(forModifiedTotals totals: (additions: Int, deletions: Int)) -> ConventionalCommitType {
+        let total = totals.additions + totals.deletions
+        guard total > 0 else { return .chore }
+
+        if totals.deletions == 0 || totals.additions > totals.deletions * 3 {
+            return .feat
+        }
+        if total > 20 && totals.additions > 0 && totals.deletions > 0 {
+            return .refactor
         }
         return .fix
     }

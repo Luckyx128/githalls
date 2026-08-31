@@ -20,8 +20,6 @@ enum StatusParser {
         let worktreeStatus = chars[1]
         let rest = String(chars[3...])
         
-        // Rename/copy normalmente é sinalizado na coluna de índice (X), mas em alguns fluxos
-        // (ex.: "git add -N" depois de mover o arquivo) o git só marca na coluna de worktree (Y).
         if indexStatus == "R" || indexStatus == "C" || worktreeStatus == "R" || worktreeStatus == "C" {
             let parts = rest.components(separatedBy: " -> ")
             guard parts.count == 2 else { return nil }

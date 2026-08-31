@@ -97,6 +97,23 @@ extension GitService {
         }
         return StatusParser.parse(result.standardOutput)
     }
+
+    /// Linhas adicionadas/removidas por arquivo staged — usado só como sinal
+    /// pra sugerir o tipo de commit, não pra exibir diff nenhum.
+    func numstat(at repoURL: URL) async throws -> [String: (additions: Int, deletions: Int)] {
+        let result = try await run(["diff", "--cached", "--numstat"], in: repoURL)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+        var stats: [String: (additions: Int, deletions: Int)] = [:]
+        for line in result.standardOutput.split(separator: "\n") {
+            let parts = line.split(separator: "\t")
+            // Arquivo binário reporta "-\t-\tpath" — sem contagem de linha, ignora.
+            guard parts.count == 3, let additions = Int(parts[0]), let deletions = Int(parts[1]) else { continue }
+            stats[String(parts[2])] = (additions, deletions)
+        }
+        return stats
+    }
 }
 
 extension GitService {
@@ -118,6 +135,14 @@ extension GitService {
 extension GitService {
     func currentBranch(at repoURL: URL) async throws -> String {
         let result = try await run(["branch", "--show-current"], in: repoURL)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+        return result.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    func remoteURL(at repoURL: URL, name: String = "origin") async throws -> String {
+        let result = try await run(["remote", "get-url", name], in: repoURL)
         guard result.terminationStatus == 0 else {
             throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
         }

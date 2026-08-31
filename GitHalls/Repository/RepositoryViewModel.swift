@@ -16,7 +16,10 @@ enum SidebarMode: Hashable {
 @MainActor
 final class RepositoryViewModel {
     private let gitService = GitService()
-    
+    private let gitHubService = GitHubService()
+
+    var isCreatingPullRequest = false
+
     var repositoryURL: URL?
     var changes: [FileChange] = []
     var selectedChangeID: FileChange.ID?
@@ -54,9 +57,6 @@ final class RepositoryViewModel {
     
     var recentBranchNames: [String] = []
     
-    // Tokens de "esta é a chamada mais recente?" — evita que uma resposta assíncrona
-    // atrasada (repo/arquivo/commit trocado enquanto a chamada anterior ainda estava
-    // em voo) sobrescreva o estado com dado desatualizado.
     private var statusRequestToken = UUID()
     private var diffRequestToken = UUID()
     private var commitDetailRequestToken = UUID()
@@ -413,12 +413,59 @@ final class RepositoryViewModel {
         }
     }
     
+    func suggestedCommitType() async -> ConventionalCommitType {
+        let staged = changes.filter(\.isStaged)
+        guard let repositoryURL else {
+            return ConventionalCommitSuggester.suggestedType(for: staged)
+        }
+        let numstat = (try? await gitService.numstat(at: repositoryURL)) ?? [:]
+        return ConventionalCommitSuggester.suggestedType(for: staged, numstat: numstat)
+    }
+
     func clone(url: String, into destinationURL: URL) async {
         isCloning = true
         defer { isCloning = false }
         do {
             try await gitService.clone(url: url, into: destinationURL)
             open(destinationURL)
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func createPullRequest(title: String, description: String, base: String?) async {
+        guard let repositoryURL else { return }
+        isCreatingPullRequest = true
+        defer { isCreatingPullRequest = false }
+        do {
+            if let branch = currentBranch {
+                try await gitService.push(at: repositoryURL, branch: branch)
+            }
+
+            if await gitHubService.isAvailable() {
+                let output = try await gitHubService.createPullRequest(
+                    at: repositoryURL, title: title, body: description, base: base
+                )
+                if let url = URL(string: output) {
+                    NSWorkspace.shared.open(url)
+                }
+            } else {
+                let remote = try await gitService.remoteURL(at: repositoryURL)
+                guard let (owner, repo) = GitHubService.ownerAndRepo(fromRemoteURL: remote) else {
+                    throw GitError.invalidRemoteURL
+                }
+                guard let url = GitHubService.pullRequestBrowserURL(
+                    owner: owner, repo: repo,
+                    head: currentBranch ?? "HEAD", base: base,
+                    title: title, body: description
+                ) else {
+                    throw GitError.invalidRemoteURL
+                }
+                NSWorkspace.shared.open(url)
+            }
+
+            await refreshStatus()
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription

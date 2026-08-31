@@ -115,9 +115,11 @@ struct CommitView: View {
     }
 
     private func applySuggestion() {
-        selectedType = ConventionalCommitSuggester.suggestedType(for: stagedChanges)
         scope = ConventionalCommitSuggester.suggestedScope(for: stagedChanges) ?? ""
-        applyPrefix()
+        Task {
+            selectedType = await viewModel.suggestedCommitType()
+            applyPrefix()
+        }
     }
 }
 
