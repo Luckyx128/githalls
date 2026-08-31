@@ -39,11 +39,10 @@ struct BranchSwitcherView: View {
 
                 if !remoteBranches.isEmpty {
                     Section("Remote") {
-                        ForEach(remoteBranches) { branch in
-                            Text(branch.name)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+                       ForEach(remoteBranches) { branch in
+                           branchRow(name: branch.name, isCurrent: false, switchTo: shortName(for: branch.name))
+                       }
+                   }
                 }
             }
             .frame(minHeight: 220, maxHeight: 340)
@@ -69,9 +68,9 @@ struct BranchSwitcherView: View {
     }
 
     @ViewBuilder
-    private func branchRow(name: String, isCurrent: Bool) -> some View {
+    private func branchRow(name: String, isCurrent: Bool, switchTo: String? = nil) -> some View {
         Button {
-            Task { await viewModel.switchBranch(to: name) }
+            Task { await viewModel.switchBranch(to: switchTo ?? name) }
         } label: {
             HStack {
                 Text(name)
@@ -83,5 +82,10 @@ struct BranchSwitcherView: View {
             }
         }
         .buttonStyle(.plain)
+    }
+    
+    private func shortName(for remoteBranchName: String) -> String {
+        guard let slashIndex = remoteBranchName.firstIndex(of: "/") else { return remoteBranchName }
+        return String(remoteBranchName[remoteBranchName.index(after: slashIndex)...])
     }
 }
