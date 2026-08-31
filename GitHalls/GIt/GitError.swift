@@ -11,8 +11,9 @@ enum GitError: LocalizedError {
     case failedToLaunch(underlying: Error)
     case gitNotFound
     case commandFailed(exitCode: Int32, message: String)
-    
-    var errorDescription: String? { 
+    case invalidRemoteURL
+
+    var errorDescription: String? {
         switch self {
         case .failedToLaunch(let underlying):
             "Couldn't launch git: \(underlying.localizedDescription)"
@@ -20,6 +21,8 @@ enum GitError: LocalizedError {
             "git was not found. Make sure it's installed and on your PATH."
         case .commandFailed(_, let message):
             message.isEmpty ?  "git command failed." : message
+        case .invalidRemoteURL:
+            "Couldn't determine the GitHub repository from the remote URL."
         }
     }
 }

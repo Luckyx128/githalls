@@ -123,6 +123,14 @@ extension GitService {
         }
         return result.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines)
     }
+
+    func remoteURL(at repoURL: URL, name: String = "origin") async throws -> String {
+        let result = try await run(["remote", "get-url", name], in: repoURL)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+        return result.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 }
 
 extension GitService {

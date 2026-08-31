@@ -13,6 +13,7 @@ struct ContentView: View {
     @State private var showBranchSwitcher = false
     @State private var showMergeSheet = false
     @State private var showCloneSheet = false
+    @State private var showCreatePRSheet = false
 
     var body: some View {
         NavigationSplitView {
@@ -126,7 +127,19 @@ struct ContentView: View {
                 }
                 .disabled(viewModel.repositoryURL == nil)
             }
-            
+            ToolbarItem {
+                Button {
+                    showCreatePRSheet = true
+                } label: {
+                    Label("Create Pull Request", systemImage: "arrow.triangle.pull")
+                }
+                .keyboardShortcut("r", modifiers: .command)
+                .disabled(viewModel.repositoryURL == nil)
+                .sheet(isPresented: $showCreatePRSheet) {
+                    CreatePullRequestSheetView(viewModel: viewModel)
+                }
+            }
+
         }
         .navigationTitle(viewModel.repositoryURL?.lastPathComponent ?? "GitHalls")
     }
