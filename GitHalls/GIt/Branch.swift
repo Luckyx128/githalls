@@ -10,6 +10,7 @@ import Foundation
 struct Branch: Identifiable, Hashable {
     let name: String
     let isCurrent: Bool
-
-    var id: String { name }
+    let isRemote: Bool
+    
+    var id: String { (isRemote ? "remote:" : "local:") + name }
 }

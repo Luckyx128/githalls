@@ -12,24 +12,41 @@ struct BranchSwitcherView: View {
     @Bindable var viewModel: RepositoryViewModel
     @State private var newBranchName = ""
 
+    private var localBranches: [Branch] {
+        viewModel.branches.filter { !$0.isRemote }
+    }
+
+    private var remoteBranches: [Branch] {
+        viewModel.branches.filter { $0.isRemote }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            List(viewModel.branches) { branch in
-                Button {
-                    Task { await viewModel.switchBranch(to: branch.name) }
-                } label: {
-                    HStack {
-                        Text(branch.name)
-                        Spacer()
-                        if branch.isCurrent {
-                            Image(systemName: "checkmark")
+            List {
+                if !viewModel.recentBranchNames.isEmpty {
+                    Section("Recent") {
+                        ForEach(viewModel.recentBranchNames, id: \.self) { name in
+                            branchRow(name: name, isCurrent: viewModel.currentBranch == name)
+                        }
+                    }
+                }
+
+                Section("Local") {
+                    ForEach(localBranches) { branch in
+                        branchRow(name: branch.name, isCurrent: branch.isCurrent)
+                    }
+                }
+
+                if !remoteBranches.isEmpty {
+                    Section("Remote") {
+                        ForEach(remoteBranches) { branch in
+                            Text(branch.name)
                                 .foregroundStyle(.secondary)
                         }
                     }
                 }
-                .buttonStyle(.plain)
             }
-            .frame(minHeight: 150, maxHeight: 250)
+            .frame(minHeight: 220, maxHeight: 340)
 
             Divider()
 
@@ -45,9 +62,26 @@ struct BranchSwitcherView: View {
             }
             .padding(8)
         }
-        .frame(width: 260)
+        .frame(width: 280)
         .task {
             await viewModel.loadBranches()
         }
+    }
+
+    @ViewBuilder
+    private func branchRow(name: String, isCurrent: Bool) -> some View {
+        Button {
+            Task { await viewModel.switchBranch(to: name) }
+        } label: {
+            HStack {
+                Text(name)
+                Spacer()
+                if isCurrent {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .buttonStyle(.plain)
     }
 }

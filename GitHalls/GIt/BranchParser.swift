@@ -11,10 +11,16 @@ enum BranchParser {
     static func parse(_ raw: String) -> [Branch] {
         raw.split(separator: "\n").compactMap { line -> Branch? in
             let isCurrent = line.hasPrefix("* ")
-            let name = line.dropFirst(2).trimmingCharacters(in: .whitespaces)
-            // Ignora o caso de "HEAD detached at ..." — não é uma branch de verdade.
+            var name = line.dropFirst(2).trimmingCharacters(in: .whitespaces)
             guard !name.isEmpty, !name.hasPrefix("(") else { return nil }
-            return Branch(name: name, isCurrent: isCurrent)
+
+            if name.hasPrefix("remotes/") {
+                name = String(name.dropFirst("remotes/".count))
+                if name.contains(" -> ") { return nil }
+                return Branch(name: name, isCurrent: false, isRemote: true)
+            }
+
+            return Branch(name: name, isCurrent: isCurrent, isRemote: false)
         }
     }
 }

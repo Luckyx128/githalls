@@ -201,7 +201,7 @@ extension GitService {
 
 extension GitService {
     func branches(at repoURL: URL) async throws -> [Branch] {
-        let result = try await run(["branch", "--list"], in: repoURL)
+        let result = try await run(["branch", "-a", "--list"], in: repoURL)
         guard result.terminationStatus == 0 else {
             throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
         }

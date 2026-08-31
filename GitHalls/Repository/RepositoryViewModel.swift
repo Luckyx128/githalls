@@ -52,6 +52,8 @@ final class RepositoryViewModel {
 
     var isStaging = false
     
+    var recentBranchNames: [String] = []
+    
     // Tokens de "esta é a chamada mais recente?" — evita que uma resposta assíncrona
     // atrasada (repo/arquivo/commit trocado enquanto a chamada anterior ainda estava
     // em voo) sobrescreva o estado com dado desatualizado.
@@ -302,18 +304,21 @@ final class RepositoryViewModel {
         guard let repositoryURL else { return }
         do {
             branches = try await gitService.branches(at: repositoryURL)
+            recentBranchNames = RecentBranchesStore.load(for: repositoryURL)
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
         }
     }
-
+    
     func switchBranch(to name: String) async {
         guard let repositoryURL else { return }
         isSwitchingBranch = true
         defer { isSwitchingBranch = false }
         do {
             try await gitService.switchBranch(at: repositoryURL, name: name)
+            RecentBranchesStore.addOrPromote(name, for: repositoryURL)
+            recentBranchNames = RecentBranchesStore.load(for: repositoryURL)
             selectedChangeID = nil
             currentDiff = nil
             selectedCommitID = nil
@@ -334,6 +339,8 @@ final class RepositoryViewModel {
         defer { isSwitchingBranch = false }
         do {
             try await gitService.createBranch(at: repositoryURL, name: trimmed)
+            RecentBranchesStore.addOrPromote(trimmed, for: repositoryURL)
+            recentBranchNames = RecentBranchesStore.load(for: repositoryURL)
             selectedChangeID = nil
             currentDiff = nil
             selectedCommitID = nil
