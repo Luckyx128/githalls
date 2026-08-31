@@ -19,20 +19,25 @@ actor GitService {
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = ["git"] + arguments
         process.currentDirectoryURL = directory
-        
+
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()
         process.standardOutput = stdoutPipe
         process.standardError = stderrPipe
-        
+
+        defer { withExtendedLifetime((stdoutPipe, stderrPipe)) {} }
+
         do {
             try process.run()
         } catch {
             throw GitError.failedToLaunch(underlying: error)
         }
+
+        let stdoutFD = stdoutPipe.fileHandleForReading.fileDescriptor
+        let stderrFD = stderrPipe.fileHandleForReading.fileDescriptor
         
-        async let stdoutData = Self.readAll(stdoutPipe.fileHandleForReading)
-        async let stderrData = Self.readAll(stderrPipe.fileHandleForReading)
+        async let stdoutData = Self.readAll(fromFD: stdoutFD)
+        async let stderrData = Self.readAll(fromFD: stderrFD)
         async let exitStatus: Int32 = withCheckedContinuation { continuation in
             process.terminationHandler = { continuation.resume(returning: $0.terminationStatus) }
         }
@@ -43,12 +48,20 @@ actor GitService {
             terminationStatus: status
         )
     }
-    
-    private static func readAll(_ handle: FileHandle) async throws -> Data {
-            var data = Data()
-            for try await byte in handle.bytes { data.append(byte) }
-            return data
+
+    private static nonisolated func readAll(fromFD fd: Int32) async throws -> Data {
+        try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: false)
+                do {
+                    let data = try handle.readToEnd() ?? Data()
+                    continuation.resume(returning: data)
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
         }
+    }
 }
 
 extension GitService {
@@ -272,5 +285,26 @@ extension GitService {
         guard result.terminationStatus == 0 else {
             throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
         }
+    }
+}
+
+extension GitService {
+    func clone(url: String, into destinationURL: URL) async throws {
+        let parent = destinationURL.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+        let result = try await run(["clone", url, destinationURL.path], in: parent)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+    }
+}
+
+extension GitService {
+    static func repositoryName(fromCloneURL urlString: String) -> String {
+        var name = urlString.trimmingCharacters(in: .whitespaces)
+        while name.hasSuffix("/") { name.removeLast() }
+        if name.hasSuffix(".git") { name.removeLast(4) }
+        let separators = CharacterSet(charactersIn: "/:")
+        return name.components(separatedBy: separators).last ?? name
     }
 }

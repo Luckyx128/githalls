@@ -78,6 +78,8 @@ final class RepositoryViewModel {
     var isPushing = false
     
     var isMerging = false
+    
+    var isCloning = false
 
     func pickRepository() {
         let panel = NSOpenPanel()
@@ -262,7 +264,6 @@ final class RepositoryViewModel {
             for path in paths {
                 diffs.append(try await gitService.commitFileDiff(at: repositoryURL, hash: hash, path: path))
             }
-            // O usuário já selecionou outro commit (ou fechou/trocou de repo) enquanto isso carregava.
             guard commitDetailRequestToken == token else { return }
             selectedCommitDetail = CommitDetail(commit: commit, fileDiffs: diffs)
             errorMessage = nil
@@ -278,8 +279,6 @@ final class RepositoryViewModel {
             pendingDiscard = nil
             return
         }
-        // Revalida contra o status atual antes de uma ação destrutiva — o arquivo pode ter
-        // mudado de estado no tempo entre o clique direito e a confirmação do diálogo.
         await refreshStatus()
         guard let currentChange = changes.first(where: { $0.path == change.path }) else {
             pendingDiscard = nil
@@ -403,9 +402,19 @@ final class RepositoryViewModel {
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
-            // Mesmo em conflito, atualiza a lista — os arquivos em conflito aparecem
-            // com o badge "!" (status .unmerged, que já existe desde o milestone 1).
             await refreshStatus()
+        }
+    }
+    
+    func clone(url: String, into destinationURL: URL) async {
+        isCloning = true
+        defer { isCloning = false }
+        do {
+            try await gitService.clone(url: url, into: destinationURL)
+            open(destinationURL)
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 }

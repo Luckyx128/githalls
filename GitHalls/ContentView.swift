@@ -12,6 +12,7 @@ struct ContentView: View {
     @State private var jiraViewModel = JiraViewModel()
     @State private var showBranchSwitcher = false
     @State private var showMergeSheet = false
+    @State private var showCloneSheet = false
 
     var body: some View {
         NavigationSplitView {
@@ -74,10 +75,28 @@ struct ContentView: View {
                 }
             }
             ToolbarItem {
-                Button {
-                    viewModel.pickRepository()
+                Menu {
+                    Button("Open Repository…") {
+                        viewModel.pickRepository()
+                    }
+                    Button("Clone Repository…") {
+                        showCloneSheet = true
+                    }
+                    if !viewModel.recentRepositoryURLs.isEmpty {
+                        Divider()
+                        ForEach(viewModel.recentRepositoryURLs, id: \.self) { url in
+                            Button {
+                                viewModel.open(url)
+                            } label: {
+                                Label(url.lastPathComponent, systemImage: "clock")
+                            }
+                        }
+                    }
                 } label: {
                     Label("Open Repository...", systemImage: "folder.badge.plus")
+                }
+                .sheet(isPresented: $showCloneSheet) {
+                    CloneSheetView(viewModel: viewModel)
                 }
             }
             ToolbarItem {
