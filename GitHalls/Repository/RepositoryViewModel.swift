@@ -161,7 +161,7 @@ final class RepositoryViewModel {
     }
     
     func toggleStage(for change: FileChange) async {
-        guard let repositoryURL else { return }
+        guard let repositoryURL, !isStaging else { return }
         isStaging = true
         defer { isStaging = false }
         do {
@@ -178,7 +178,7 @@ final class RepositoryViewModel {
     }
 
     func setAllStaged(_ staged: Bool) async {
-        guard let repositoryURL else { return }
+        guard let repositoryURL, !isStaging else { return }
         isStaging = true
         defer { isStaging = false }
         do {

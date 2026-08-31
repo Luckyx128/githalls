@@ -51,7 +51,7 @@ struct ChangesSidebarView: View {
                     ChangesHeaderView(viewModel: viewModel)
                     Divider()
                     List(viewModel.changes, selection: $viewModel.selectedChangeID) { change in
-                        FileChangeRow(change: change) {
+                        FileChangeRow(change: change, isDisabled: viewModel.isStaging) {
                             Task { await viewModel.toggleStage(for: change)}
                         }
                         .tag(change.id)
@@ -107,8 +107,9 @@ struct ChangesSidebarView: View {
 
 struct FileChangeRow: View {
     let change: FileChange
+    var isDisabled: Bool = false
     let onToggleStage: () -> Void
-    
+
     var body: some View {
         HStack {
             Toggle("", isOn: Binding(
@@ -117,6 +118,7 @@ struct FileChangeRow: View {
             ))
             .toggleStyle(.checkbox)
             .labelsHidden()
+            .disabled(isDisabled)
             
             StatusBadge(status: change.status)
             
@@ -203,6 +205,7 @@ struct ChangesHeaderView: View {
             ))
             .toggleStyle(.checkbox)
             .labelsHidden()
+            .disabled(viewModel.isStaging)
 
             Text("\(viewModel.changes.count) changed file\(viewModel.changes.count == 1 ? "" : "s")")
                 .font(.subheadline)
