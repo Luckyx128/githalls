@@ -40,7 +40,7 @@ struct BranchSwitcherView: View {
                 if !remoteBranches.isEmpty {
                     Section("Remote") {
                        ForEach(remoteBranches) { branch in
-                           branchRow(name: branch.name, isCurrent: false, switchTo: shortName(for: branch.name))
+                           branchRow(name: branch.name, isCurrent: false, switchTo: Branch.remoteShortName(from: branch.name))
                        }
                    }
                 }
@@ -82,10 +82,5 @@ struct BranchSwitcherView: View {
             }
         }
         .buttonStyle(.plain)
-    }
-    
-    private func shortName(for remoteBranchName: String) -> String {
-        guard let slashIndex = remoteBranchName.firstIndex(of: "/") else { return remoteBranchName }
-        return String(remoteBranchName[remoteBranchName.index(after: slashIndex)...])
     }
 }

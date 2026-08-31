@@ -113,11 +113,15 @@ struct ContentView: View {
             }
             ToolbarItem {
                 Button {
-                    viewModel.closeRepository()
+                    showCreatePRSheet = true
                 } label: {
-                    Label("Close Repository", systemImage: "xmark.circle")
+                    Label("Create Pull Request", systemImage: "arrow.triangle.pull")
                 }
+                .keyboardShortcut("r", modifiers: .command)
                 .disabled(viewModel.repositoryURL == nil)
+                .sheet(isPresented: $showCreatePRSheet) {
+                    CreatePullRequestSheetView(viewModel: viewModel)
+                }
             }
             ToolbarItem {
                 Button {
@@ -129,15 +133,11 @@ struct ContentView: View {
             }
             ToolbarItem {
                 Button {
-                    showCreatePRSheet = true
+                    viewModel.closeRepository()
                 } label: {
-                    Label("Create Pull Request", systemImage: "arrow.triangle.pull")
+                    Label("Close Repository", systemImage: "xmark.circle")
                 }
-                .keyboardShortcut("r", modifiers: .command)
                 .disabled(viewModel.repositoryURL == nil)
-                .sheet(isPresented: $showCreatePRSheet) {
-                    CreatePullRequestSheetView(viewModel: viewModel)
-                }
             }
 
         }

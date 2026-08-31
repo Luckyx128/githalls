@@ -10,7 +10,14 @@ struct CreatePullRequestSheetView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var title = ""
     @State private var description = ""
-    @State private var baseBranch = ""
+    @State private var baseBranch: String?
+
+    private var remoteBranchNames: [String] {
+        let names = viewModel.branches
+            .filter(\.isRemote)
+            .map { Branch.remoteShortName(from: $0.name) }
+        return Array(Set(names)).sorted()
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -25,10 +32,11 @@ struct CreatePullRequestSheetView: View {
                 .lineLimit(4...8)
                 .textFieldStyle(.roundedBorder)
 
-            HStack {
-                Text("Base branch:")
-                TextField("repository default", text: $baseBranch)
-                    .textFieldStyle(.roundedBorder)
+            Picker("Base branch:", selection: $baseBranch) {
+                Text("Repository default").tag(String?.none)
+                ForEach(remoteBranchNames, id: \.self) { name in
+                    Text(name).tag(String?.some(name))
+                }
             }
 
             if let currentBranch = viewModel.currentBranch {
@@ -41,12 +49,11 @@ struct CreatePullRequestSheetView: View {
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }
                 Button(viewModel.isCreatingPullRequest ? "Creating…" : "Create Pull Request") {
-                    let trimmedBase = baseBranch.trimmingCharacters(in: .whitespaces)
                     Task {
                         await viewModel.createPullRequest(
                             title: title,
                             description: description,
-                            base: trimmedBase.isEmpty ? nil : trimmedBase
+                            base: baseBranch
                         )
                         dismiss()
                     }
@@ -57,5 +64,8 @@ struct CreatePullRequestSheetView: View {
         }
         .padding(20)
         .frame(width: 420)
+        .task {
+            await viewModel.loadBranches()
+        }
     }
 }
