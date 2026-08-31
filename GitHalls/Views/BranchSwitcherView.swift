@@ -28,7 +28,7 @@ struct BranchSwitcherView: View {
                         ForEach(viewModel.recentBranchNames, id: \.self) { name in
                             branchRow(name: name, isCurrent: viewModel.currentBranch == name)
                         }
-                    }
+                    } 
                 }
 
                 Section("Local") {
