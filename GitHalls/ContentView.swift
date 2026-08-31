@@ -132,8 +132,30 @@ struct ContentView: View {
                 .disabled(viewModel.repositoryURL == nil)
             }
             ToolbarItem {
+                Menu {
+                    Button("Reveal in Finder") {
+                        if let url = viewModel.repositoryURL {
+                            QuickActions.revealInFinder(url)
+                        }
+                    }
+                    Button("Open in Terminal") {
+                        if let url = viewModel.repositoryURL {
+                            QuickActions.openInTerminal(url)
+                        }
+                    }
+                    Button("Open in Editor") {
+                        if let url = viewModel.repositoryURL {
+                            Task { await QuickActions.openInEditor(url) }
+                        }
+                    }
+                } label: {
+                    Label("Quick Actions", systemImage: "ellipsis.circle")
+                }
+                .disabled(viewModel.repositoryURL == nil)
+            }
+            ToolbarItem {
                 Button {
-                    viewModel.closeRepository()  
+                    viewModel.closeRepository()
                 } label: {
                     Label("Close Repository", systemImage: "xmark.circle")
                 }

@@ -56,6 +56,12 @@ struct ChangesSidebarView: View {
                         }
                         .tag(change.id)
                         .contextMenu {
+                            Button("Reveal in Finder") {
+                                if let repoURL = viewModel.repositoryURL {
+                                    QuickActions.revealInFinder(repoURL.appending(path: change.path))
+                                }
+                            }
+                            Divider()
                             Button("Discard Changes", role: .destructive) {
                                 viewModel.requestDiscard(change)
                             }
