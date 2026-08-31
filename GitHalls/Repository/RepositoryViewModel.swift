@@ -413,6 +413,15 @@ final class RepositoryViewModel {
         }
     }
     
+    func suggestedCommitType() async -> ConventionalCommitType {
+        let staged = changes.filter(\.isStaged)
+        guard let repositoryURL else {
+            return ConventionalCommitSuggester.suggestedType(for: staged)
+        }
+        let numstat = (try? await gitService.numstat(at: repositoryURL)) ?? [:]
+        return ConventionalCommitSuggester.suggestedType(for: staged, numstat: numstat)
+    }
+
     func clone(url: String, into destinationURL: URL) async {
         isCloning = true
         defer { isCloning = false }
