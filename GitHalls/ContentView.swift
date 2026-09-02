@@ -100,15 +100,24 @@ struct ContentView: View {
                     MergeSheetView(viewModel: viewModel)
                 }
             }
-            ToolbarItem {
-                Button {
-                    showBranchSwitcher = true
-                } label: {
-                    Label(viewModel.currentBranch ?? "Branch", systemImage: "arrow.triangle.branch")
-                }
-                .disabled(viewModel.repositoryURL == nil)
-                .popover(isPresented: $showBranchSwitcher) {
-                    BranchSwitcherView(viewModel: viewModel)
+            ToolbarItem(placement: .principal) {
+                if viewModel.repositoryURL != nil {
+                    Button {
+                        showBranchSwitcher = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "arrow.triangle.branch")
+                            Text(viewModel.currentBranch ?? "Branch")
+                                .lineLimit(1)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(.quaternary, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .popover(isPresented: $showBranchSwitcher) {
+                        BranchSwitcherView(viewModel: viewModel)
+                    }
                 }
             }
             ToolbarItem {
