@@ -14,16 +14,28 @@ actor GitService {
         let terminationStatus: Int32
     }
     
-    func run(_ arguments: [String], in directory: URL) async throws -> CommandResult {
+    func run(_ arguments: [String], in directory: URL, stdin: String? = nil) async throws -> CommandResult {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = ["git"] + arguments
         process.currentDirectoryURL = directory
+        var environment = ProcessInfo.processInfo.environment
+        environment["GIT_TERMINAL_PROMPT"] = "0"
+        process.environment = environment
 
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()
         process.standardOutput = stdoutPipe
         process.standardError = stderrPipe
+
+        let stdinPipe: Pipe?
+        if stdin != nil {
+            let pipe = Pipe()
+            process.standardInput = pipe
+            stdinPipe = pipe
+        } else {
+            stdinPipe = nil
+        }
 
         defer { withExtendedLifetime((stdoutPipe, stderrPipe)) {} }
 
@@ -31,6 +43,12 @@ actor GitService {
             try process.run()
         } catch {
             throw GitError.failedToLaunch(underlying: error)
+        }
+
+        if let stdin, let stdinPipe {
+            let handle = stdinPipe.fileHandleForWriting
+            try? handle.write(contentsOf: Data(stdin.utf8))
+            try? handle.close()
         }
 
         let stdoutFD = stdoutPipe.fileHandleForReading.fileDescriptor
@@ -98,8 +116,6 @@ extension GitService {
         return StatusParser.parse(result.standardOutput)
     }
 
-    /// Linhas adicionadas/removidas por arquivo staged — usado só como sinal
-    /// pra sugerir o tipo de commit, não pra exibir diff nenhum.
     func numstat(at repoURL: URL) async throws -> [String: (additions: Int, deletions: Int)] {
         let result = try await run(["diff", "--cached", "--numstat"], in: repoURL)
         guard result.terminationStatus == 0 else {
@@ -129,6 +145,83 @@ extension GitService {
             throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
         }
         return DiffParser.parse(result.standardOutput)
+    }
+}
+
+extension GitService {
+    func identity(at repoURL: URL) async throws -> GitIdentity? {
+        async let nameResult = run(["config", "user.name"], in: repoURL)
+        async let emailResult = run(["config", "user.email"], in: repoURL)
+        let (nameRes, emailRes) = try await (nameResult, emailResult)
+        guard nameRes.terminationStatus == 0, emailRes.terminationStatus == 0 else { return nil }
+        let name = nameRes.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+        let email = emailRes.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty || !email.isEmpty else { return nil }
+        return GitIdentity(id: UUID(), label: "", name: name, email: email, githubUsername: "")
+    }
+
+    func hasLocalIdentity(at repoURL: URL) async throws -> Bool {
+        let result = try await run(["config", "--local", "user.name"], in: repoURL)
+        return result.terminationStatus == 0
+    }
+
+    func setIdentity(at repoURL: URL, name: String, email: String) async throws {
+        let nameResult = try await run(["config", "--local", "user.name", name], in: repoURL)
+        guard nameResult.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: nameResult.terminationStatus, message: nameResult.standardError)
+        }
+        let emailResult = try await run(["config", "--local", "user.email", email], in: repoURL)
+        guard emailResult.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: emailResult.terminationStatus, message: emailResult.standardError)
+        }
+    }
+
+    func setRemoteUsername(at repoURL: URL, remoteName: String = "origin", username: String) async throws {
+        let currentURL = try await remoteURL(at: repoURL, name: remoteName)
+        guard currentURL.hasPrefix("https://") else {
+            throw GitError.invalidRemoteURL
+        }
+        guard let (owner, repo) = GitHubService.ownerAndRepo(fromRemoteURL: currentURL) else {
+            throw GitError.invalidRemoteURL
+        }
+        let newURL = "https://\(username)@github.com/\(owner)/\(repo).git"
+        let result = try await run(["remote", "set-url", remoteName, newURL], in: repoURL)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+    }
+
+    /// Acrescenta o osxkeychain como fallback aos helpers já configurados —
+    /// sem resetar a lista. Necessário porque o GitHub CLI (`gh auth
+    /// setup-git`) costuma registrar `[credential "https://github.com"]` no
+    /// `~/.gitconfig` com um `helper =` vazio (reseta a lista) seguido de
+    /// `!gh auth git-credential`, substituindo qualquer osxkeychain
+    /// configurado globalmente só pra github.com. O helper do `gh` ignora o
+    /// username da URL — sempre resolve pra conta "ativa" no `gh auth
+    /// status` — e recusa (exit != 0) quando pedem um username diferente
+    /// dessa conta. Sem esse fallback, isso deixava fetch/pull/push
+    /// completamente surdos à troca de identidade do GitHalls, sem jeito de
+    /// contornar de dentro do app.
+    ///
+    /// De propósito NÃO resetamos a lista (`-c credential.helper=`) antes
+    /// de acrescentar: git só consulta um helper seguinte quando o anterior
+    /// não devolve credencial completa, então quem só usa `gh` com uma
+    /// conta só nunca chega a bater no osxkeychain — comportamento idêntico
+    /// ao de antes. O osxkeychain só entra em jogo quando o(s) helper(s) já
+    /// configurados falham ou não têm o que a operação pediu.
+    private static let credentialHelperOverride = ["-c", "credential.helper=osxkeychain"]
+
+    func approveCredential(host: String = "github.com", username: String, token: String) async throws {
+        let input = "protocol=https\nhost=\(host)\nusername=\(username)\npassword=\(token)\n\n"
+        let result = try await run(Self.credentialHelperOverride + ["credential", "approve"], in: FileManager.default.homeDirectoryForCurrentUser, stdin: input)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+    }
+
+    func rejectCredential(host: String = "github.com", username: String) async throws {
+        let input = "protocol=https\nhost=\(host)\nusername=\(username)\n\n"
+        _ = try await run(Self.credentialHelperOverride + ["credential", "reject"], in: FileManager.default.homeDirectoryForCurrentUser, stdin: input)
     }
 }
 
@@ -199,8 +292,6 @@ extension GitService {
                 throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
             }
         case .renamed, .copied:
-            // O path novo não existe no HEAD (só o antigo) — "checkout HEAD -- path" falharia.
-            // Desfaz o rename: descarta o path novo e restaura o conteúdo original no path antigo.
             let resetResult = try await run(["reset", "HEAD", "--", change.path], in: repoURL)
             guard resetResult.terminationStatus == 0 else {
                 throw GitError.commandFailed(exitCode: resetResult.terminationStatus, message: resetResult.standardError)
@@ -268,21 +359,21 @@ extension GitService {
 
 extension GitService {
     func fetch(at repoURL: URL) async throws {
-        let result = try await run(["fetch"], in: repoURL)
+        let result = try await run(Self.credentialHelperOverride + ["fetch"], in: repoURL)
         guard result.terminationStatus == 0 else {
             throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
         }
     }
 
     func pull(at repoURL: URL) async throws {
-        let result = try await run(["pull"], in: repoURL)
+        let result = try await run(Self.credentialHelperOverride + ["pull"], in: repoURL)
         guard result.terminationStatus == 0 else {
             throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
         }
     }
 
     func push(at repoURL: URL, branch: String) async throws {
-        let result = try await run(["push", "-u", "origin", branch], in: repoURL)
+        let result = try await run(Self.credentialHelperOverride + ["push", "-u", "origin", branch], in: repoURL)
         guard result.terminationStatus == 0 else {
             throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
         }
@@ -317,7 +408,7 @@ extension GitService {
     func clone(url: String, into destinationURL: URL) async throws {
         let parent = destinationURL.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
-        let result = try await run(["clone", url, destinationURL.path], in: parent)
+        let result = try await run(Self.credentialHelperOverride + ["clone", url, destinationURL.path], in: parent)
         guard result.terminationStatus == 0 else {
             throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
         }

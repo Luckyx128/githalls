@@ -20,6 +20,19 @@ final class RepositoryViewModel {
 
     var isCreatingPullRequest = false
 
+    init() {
+        startPeriodicRefresh()
+    }
+
+    private func startPeriodicRefresh() {
+        Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(120))
+                await self?.refreshStatus()
+            }
+        }
+    }
+
     var repositoryURL: URL?
     var changes: [FileChange] = []
     var selectedChangeID: FileChange.ID?
@@ -80,8 +93,50 @@ final class RepositoryViewModel {
     var isPushing = false
     
     var isMerging = false
-    
+
     var isCloning = false
+
+    var currentIdentity: GitIdentity?
+    var hasLocalIdentityOverride = false
+    var savedIdentities: [GitIdentity] = GitIdentityStore.load()
+    var isSwitchingIdentity = false
+
+    func reloadSavedIdentities() {
+        savedIdentities = GitIdentityStore.load()
+    }
+
+    func setIdentity(_ identity: GitIdentity, fixRemoteURL: Bool) async {
+        guard let repositoryURL, !isSwitchingIdentity else { return }
+        isSwitchingIdentity = true
+        defer { isSwitchingIdentity = false }
+        do {
+            try await gitService.setIdentity(at: repositoryURL, name: identity.name, email: identity.email)
+            if fixRemoteURL, !identity.githubUsername.isEmpty {
+                try? await gitService.setRemoteUsername(at: repositoryURL, username: identity.githubUsername)
+            }
+            await refreshStatus()
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Guarda usuário+token no credential helper do git (normalmente
+    /// osxkeychain) — não fica salvo em lugar nenhum do GitHalls. Corrige o
+    /// caso em que essa conta nunca autenticou por HTTPS nessa máquina, então
+    /// o git não tem credencial pra resolver e o push/pull falha sem TTY pra
+    /// perguntar.
+    func saveGitHubToken(_ token: String, forUsername username: String) async -> Bool {
+        guard !token.isEmpty, !username.isEmpty else { return false }
+        do {
+            try await gitService.approveCredential(username: username, token: token)
+            errorMessage = nil
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
 
     func pickRepository() {
         let panel = NSOpenPanel()
@@ -103,9 +158,13 @@ final class RepositoryViewModel {
             let newChanges = try await gitService.status(at: repositoryURL)
             let branch = try? await gitService.currentBranch(at: repositoryURL)
             let sync = try? await gitService.branchSync(at: repositoryURL)
+            let identity = try? await gitService.identity(at: repositoryURL)
+            let hasLocal = (try? await gitService.hasLocalIdentity(at: repositoryURL)) ?? false
             guard statusRequestToken == token else { return }
             changes = newChanges
             currentBranch = branch
+            currentIdentity = identity
+            hasLocalIdentityOverride = hasLocal
             if let sync {
                 syncAhead = sync.ahead
                 syncBehind = sync.behind
@@ -233,6 +292,8 @@ final class RepositoryViewModel {
         selectedCommitDetail = nil
         isLoadingCommitDetail = false
         pendingDiscard = nil
+        currentIdentity = nil
+        hasLocalIdentityOverride = false
     }
 
     func forgetRecent(_ url: URL) {

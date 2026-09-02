@@ -13,6 +13,12 @@ struct CommitView: View {
     @State private var selectedType: ConventionalCommitType?
     @State private var scope: String = ""
     @State private var showTypeReference = false
+    @State private var showIdentitySwitcher = false
+
+    private var identityLabel: String {
+        guard let identity = viewModel.currentIdentity else { return "Set identity" }
+        return identity.label.isEmpty ? identity.name : identity.label
+    }
 
     private var stagedChanges: [FileChange] {
         viewModel.changes.filter(\.isStaged)
@@ -34,6 +40,17 @@ struct CommitView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
+            Button {
+                showIdentitySwitcher = true
+            } label: {
+                Label(identityLabel, systemImage: "person.crop.circle")
+                    .font(.caption)
+            }
+            .buttonStyle(.borderless)
+            .popover(isPresented: $showIdentitySwitcher) {
+                GitIdentitySwitcherView(viewModel: viewModel)
+            }
+
             HStack(spacing: 6) {
                 Picker("", selection: $selectedType) {
                     Text("Type").tag(ConventionalCommitType?.none)

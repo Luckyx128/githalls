@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct ContentView: View {
-    @State private var viewModel = RepositoryViewModel()
+    @Bindable var viewModel: RepositoryViewModel
     @State private var jiraViewModel = JiraViewModel()
     @State private var showBranchSwitcher = false
     @State private var showMergeSheet = false
@@ -171,5 +171,5 @@ struct ContentView: View {
 
 
 #Preview {
-    ContentView()
+    ContentView(viewModel: RepositoryViewModel())
 }

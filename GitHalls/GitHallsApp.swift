@@ -9,12 +9,25 @@ import SwiftUI
 
 @main
 struct GitHallsApp: App {
+    @State private var viewModel = RepositoryViewModel()
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(viewModel: viewModel)
         }
         Settings {
-            JiraSettingsView()
+            TabView {
+                GitIdentitiesSettingsView()
+                    .tabItem { Label("Git Identities", systemImage: "person.2") }
+                JiraSettingsView()
+                    .tabItem { Label("Jira", systemImage: "checklist") }
+            }
         }
+        MenuBarExtra {
+            MenuBarPanelView(viewModel: viewModel)
+        } label: {
+            MenuBarLabelView(viewModel: viewModel)
+        }
+        .menuBarExtraStyle(.window)
     }
 }
