@@ -34,7 +34,7 @@ struct CommitFileDiffSection: View {
             }
 
             if isExpanded {
-                DiffLinesView(diff: fileDiff)
+                DiffView(diff: fileDiff, presentation: .intrinsic(maxHeight: 2000))
             }
         }
         .background(Color.gray.opacity(0.05))

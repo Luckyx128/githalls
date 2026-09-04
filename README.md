@@ -6,9 +6,10 @@ browse history, manage branches, sync with a remote, merge with a clear
 visual of which branch actually changes, and jump straight from a Jira
 card to a new branch — all without leaving a native Mac window.
 
-No Electron, no bundled runtime, no third-party dependencies. Every git
-operation shells out to the `git` binary already installed on your Mac,
-the same way the Terminal would.
+No Electron, no bundled runtime. Every git operation shells out to the
+`git` binary already installed on your Mac, the same way the Terminal
+would. The only third-party dependency is [Highlightr](https://github.com/raspu/Highlightr),
+which powers diff syntax highlighting.
 
 Built with native SwiftUI + the Observation framework. macOS 26+.
 
@@ -20,11 +21,14 @@ Built with native SwiftUI + the Observation framework. macOS 26+.
   discard-changes with a confirmation dialog before anything destructive
   happens.
 - **Diff view** — colored addition/deletion/context lines, a friendly
-  hunk-header label instead of raw `@@ ... @@` syntax, a `+`/`-` gutter
-  column, and lightweight syntax highlighting (a hand-rolled scanner —
-  keywords, strings, numbers, comments — no external highlighting
-  library). Handles binary files, merge-commit diffs, and files without a
-  trailing newline without corrupting the view.
+  hunk-header label instead of raw `@@ ... @@` syntax, an old/new line
+  number gutter with a `+`/`-` marker, and real per-language syntax
+  highlighting (Highlightr / highlight.js, language inferred from the file
+  extension, light and dark themes). The diff is a native text view:
+  select and copy code with `⌘C` (line numbers stay out of the
+  clipboard), find with `⌘F`, or right-click to copy the whole diff.
+  Handles binary files, merge-commit diffs, and files without a trailing
+  newline without corrupting the view.
 - **History** — full commit log with author, relative date, and short
   hash. Selecting a commit shows every file it touched, each in its own
   collapsible diff section.
@@ -92,7 +96,9 @@ GitHalls/
 └─ Views/                   One SwiftUI view per concern: ChangesSidebarView, DiffView,
                              HistorySidebarView, CommitDetailView, BranchSwitcherView,
                              MergeSheetView, SyncButton, KanbanSidebarView, IssueDetailView,
-                             JiraSettingsView, SyntaxHighlighter
+                             JiraSettingsView
+   └─ DiffTextView/         NSTextView-backed diff renderer — highlighting, gutter,
+                             selection/copy/find (DiffHighlightMapper, DiffSyntaxHighlighter, …)
 ```
 
 Key pieces:
@@ -131,10 +137,10 @@ Key pieces:
 Issues and pull requests are welcome. A few things that keep the project
 consistent:
 
-- **No external dependencies.** Everything shells out to the `git` CLI or
-  uses `URLSession`/`Foundation`/`Security` directly — no Swift Package
-  Manager dependencies. Keep it that way unless there's a strong reason
-  not to.
+- **Minimal dependencies.** Currently only [Highlightr](https://github.com/raspu/Highlightr)
+  (diff syntax highlighting). Everything else shells out to the `git` CLI
+  or uses `URLSession`/`Foundation`/`Security` directly. Keep it that way
+  unless there's a strong reason not to.
 - **One type per file**, grouped by concern (`GIt/`, `Jira/`, `Repository/`,
   `Views/`) — a parser, a model, a service method all live where the
   existing ones of their kind live.

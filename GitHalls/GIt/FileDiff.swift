@@ -8,7 +8,7 @@
 import Foundation
 
 struct DiffLine: Identifiable {
-    enum Kind {
+    enum Kind: Hashable {
         case addition, deletion, context, hunkHeader
     }
 
@@ -22,4 +22,7 @@ struct DiffLine: Identifiable {
 struct FileDiff {
     let path: String
     let lines: [DiffLine]
+
+    /// highlight.js language id inferred from `path`, or `nil` when unknown.
+    var languageHint: String? { SyntaxLanguage.forPath(path) }
 }
