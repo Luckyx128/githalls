@@ -91,6 +91,10 @@ final class RepositoryViewModel {
     var isFetching = false
     var isPulling = false
     var isPushing = false
+
+    /// git refused a pull because it would have written over uncommitted work.
+    /// The error alert turns this into an offer rather than a dead end.
+    var pullBlockedByLocalChanges = false
     
     var isMerging = false
 
@@ -455,8 +459,79 @@ final class RepositoryViewModel {
             await loadCommits()
             errorMessage = nil
         } catch {
+            pullBlockedByLocalChanges = Self.isBlockedByLocalChanges(error)
             errorMessage = error.localizedDescription
         }
+    }
+
+    /// The offer a blocked pull turns into: set the changes aside, pull, put
+    /// them back.
+    func pullStashingLocalChanges() async {
+        guard let repositoryURL else { return }
+        isPulling = true
+        pullBlockedByLocalChanges = false
+        defer { isPulling = false }
+
+        do {
+            let conflicted = try await gitService.pullAutostash(at: repositoryURL)
+            selectedChangeID = nil
+            currentDiff = nil
+            await refreshStatus()
+            await loadCommits()
+
+            // Not an error — the pull worked. But saying nothing would leave the
+            // user in a conflicted tree with a stash nobody mentioned.
+            errorMessage = conflicted ? "Pulled, but your local changes could not be put back cleanly.\n\nThey are safe in the stash: resolve the conflicts in the affected files, then drop the leftover stash entry." : nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    // MARK: - Conflicts
+
+    /// Files git could not merge on its own. Nothing else can be committed
+    /// until these are dealt with, so they are worth calling out separately
+    /// rather than leaving in the list looking like ordinary changes.
+    var conflictedChanges: [FileChange] {
+        changes.filter { $0.status == .unmerged }
+    }
+
+    var hasConflicts: Bool { !conflictedChanges.isEmpty }
+
+    /// Tells git the file is settled. Resolving *is* staging — there is no
+    /// separate "resolved" state, which is why this reuses stage.
+    func markResolved(_ change: FileChange) async {
+        guard let repositoryURL else { return }
+
+        isStaging = true
+        defer { isStaging = false }
+
+        do {
+            try await gitService.stage(at: repositoryURL, path: change.path)
+            await refreshStatus()
+            await loadDiff()
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func open(_ change: FileChange, in editor: ExternalEditor) {
+        guard let repositoryURL else { return }
+
+        ExternalEditors.open(repositoryURL.appending(path: change.path), with: editor)
+    }
+
+    /// Clears the alert and the offer it was carrying.
+    func dismissError() {
+        errorMessage = nil
+        pullBlockedByLocalChanges = false
+    }
+
+    private static func isBlockedByLocalChanges(_ error: Error) -> Bool {
+        guard case GitError.commandFailed(_, let message) = error else { return false }
+
+        return PullDiagnostics.isBlockedByLocalChanges(message)
     }
 
     func push() async {
@@ -482,6 +557,8 @@ final class RepositoryViewModel {
 
     /// The one action the sync button performs, chosen from the current state.
     func sync() async {
+        pullBlockedByLocalChanges = false
+
         switch BranchSync.action(hasUpstream: hasUpstream, ahead: syncAhead, behind: syncBehind) {
         case .upToDate:
             return
@@ -513,6 +590,9 @@ final class RepositoryViewModel {
             try await gitService.push(at: repositoryURL, branch: branch)
             errorMessage = nil
         } catch {
+            // Same offer as a plain pull: the sync button is where this is most
+            // often hit.
+            pullBlockedByLocalChanges = Self.isBlockedByLocalChanges(error)
             errorMessage = error.localizedDescription
         }
 

@@ -443,17 +443,42 @@ extension GitService {
     /// asked for explicitly — but only when the user set no preference of their
     /// own, which is theirs to keep.
     func pullDivergent(at repoURL: URL) async throws {
-        var configured = try await configValue("pull.rebase", at: repoURL)
-        if configured == nil {
-            configured = try await configValue("pull.ff", at: repoURL)
-        }
-
-        let arguments = configured == nil ? ["pull", "--no-rebase"] : ["pull"]
+        let arguments = ["pull"] + (try await reconcileArguments(at: repoURL))
 
         let result = try await run(Self.credentialHelperOverride + arguments, in: repoURL)
         guard result.terminationStatus == 0 else {
             throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
         }
+    }
+
+    /// Sets the working tree aside for the pull and puts it back afterwards,
+    /// which is what git refuses to do on its own when the merge would write
+    /// over uncommitted work.
+    ///
+    /// - Returns: true when the pull landed but those changes could not be put
+    ///   back cleanly. git reports that on stderr **while exiting 0**, so it has
+    ///   to be read out rather than thrown.
+    @discardableResult
+    func pullAutostash(at repoURL: URL) async throws -> Bool {
+        let arguments = ["pull", "--autostash"] + (try await reconcileArguments(at: repoURL))
+
+        let result = try await run(Self.credentialHelperOverride + arguments, in: repoURL)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+
+        return PullDiagnostics.autostashConflicted(result.standardError + result.standardOutput)
+    }
+
+    /// `--no-rebase`, but only when the user configured no preference of their
+    /// own. Without it a divergent pull aborts asking to be told how.
+    private func reconcileArguments(at repoURL: URL) async throws -> [String] {
+        var configured = try await configValue("pull.rebase", at: repoURL)
+        if configured == nil {
+            configured = try await configValue("pull.ff", at: repoURL)
+        }
+
+        return configured == nil ? ["--no-rebase"] : []
     }
 
     /// `git config <key>` exits non-zero when the key is unset, which is a

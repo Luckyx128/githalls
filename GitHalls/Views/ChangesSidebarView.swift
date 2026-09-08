@@ -11,6 +11,24 @@ import SwiftUI
 struct ChangesSidebarView: View {
     @Bindable var viewModel: RepositoryViewModel
 
+    /// Conflicts stop everything else: nothing can be committed until they are
+    /// settled, so the list says so above itself rather than leaving them to be
+    /// spotted among ordinary changes.
+    private var conflictBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+
+            Text("^[\(viewModel.conflictedChanges.count) file](inflect: true) with conflicts")
+                .font(.caption)
+
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(.quaternary)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             Group {
@@ -50,12 +68,36 @@ struct ChangesSidebarView: View {
                 } else {
                     ChangesHeaderView(viewModel: viewModel)
                     Divider()
+
+                    if viewModel.hasConflicts {
+                        conflictBanner
+                    }
+
                     List(viewModel.changes, selection: $viewModel.selectedChangeID) { change in
                         FileChangeRow(change: change, isDisabled: viewModel.isStaging) {
                             Task { await viewModel.toggleStage(for: change)}
                         }
                         .tag(change.id)
                         .contextMenu {
+                            // Resolving is what a conflicted file needs first,
+                            // so it leads.
+                            if change.status == .unmerged {
+                                Button("Mark as Resolved") {
+                                    Task { await viewModel.markResolved(change) }
+                                }
+                                Divider()
+                            }
+
+                            if !ExternalEditors.installed.isEmpty {
+                                Menu("Open in") {
+                                    ForEach(ExternalEditors.installed) { editor in
+                                        Button(editor.name) {
+                                            viewModel.open(change, in: editor)
+                                        }
+                                    }
+                                }
+                            }
+
                             Button("Reveal in Finder") {
                                 if let repoURL = viewModel.repositoryURL {
                                     QuickActions.revealInFinder(repoURL.appending(path: change.path))
@@ -79,13 +121,22 @@ struct ChangesSidebarView: View {
             Task { await viewModel.loadDiff() }
         }
         .alert(
-            "Error",
+            viewModel.pullBlockedByLocalChanges ? "Pull Blocked by Local Changes" : "Error",
             isPresented: Binding(
                 get: { viewModel.errorMessage != nil },
-                set: { if !$0 { viewModel.errorMessage = nil } }
+                set: { if !$0 { viewModel.dismissError() } }
             )
         ) {
-            Button("OK") { viewModel.errorMessage = nil }
+            // git refuses this pull rather than overwriting work in progress.
+            // It can still be done: set the changes aside and put them back.
+            if viewModel.pullBlockedByLocalChanges {
+                Button("Stash, Pull and Restore") {
+                    Task { await viewModel.pullStashingLocalChanges() }
+                }
+                Button("Cancel", role: .cancel) { viewModel.dismissError() }
+            } else {
+                Button("OK") { viewModel.dismissError() }
+            }
         } message: {
             Text(viewModel.errorMessage ?? "")
         }
