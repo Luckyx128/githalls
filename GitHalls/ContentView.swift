@@ -9,7 +9,7 @@ import SwiftUI
 
 struct ContentView: View {
     @Bindable var viewModel: RepositoryViewModel
-    @State private var jiraViewModel = JiraViewModel()
+    @Bindable var jiraViewModel: JiraViewModel
     @State private var showBranchSwitcher = false
     @State private var showMergeSheet = false
     @State private var showCloneSheet = false
@@ -44,7 +44,7 @@ struct ContentView: View {
             case .history:
                 CommitDetailView(viewModel: viewModel)
             case .kanban:
-                IssueDetailView(jiraViewModel: jiraViewModel, repositoryViewModel: viewModel)
+                KanbanBoardView(viewModel: jiraViewModel)
             }
         }
         .task {
@@ -180,5 +180,5 @@ struct ContentView: View {
 
 
 #Preview {
-    ContentView(viewModel: RepositoryViewModel())
+    ContentView(viewModel: RepositoryViewModel(), jiraViewModel: JiraViewModel())
 }

@@ -5,11 +5,25 @@
 
 import Foundation
 
+/// The three Jira Cloud calls this app makes: who am I, which issues match a
+/// JQL query, and everything about one issue. Nothing here caches or retries —
+/// the view model decides when to ask, and a rate limit comes back as an error
+/// the user can read.
 struct JiraClient {
     let credentials: JiraCredentials
 
     private static let searchPath = "/rest/api/3/search/jql"
-    private static let fields = ["summary", "status", "issuetype", "priority", "updated"]
+    private static let issuePath = "/rest/api/3/issue/"
+
+    /// Only what a card renders; asking for everything costs Jira time it
+    /// doesn't need to spend.
+    private static let cardFields = ["summary", "status", "issuetype", "priority", "updated", "assignee"]
+
+    /// What the issue window shows on top of the card.
+    private static let detailFields = [
+        "summary", "status", "issuetype", "priority", "updated", "created",
+        "assignee", "reporter", "labels", "description"
+    ]
 
     func myself() async throws -> (accountID: String, displayName: String) {
         let json = try await send(request(path: "/rest/api/3/myself"))
@@ -23,7 +37,7 @@ struct JiraClient {
         var request = request(path: Self.searchPath, method: "POST")
         request.httpBody = try JSONSerialization.data(withJSONObject: [
             "jql": jql,
-            "fields": Self.fields,
+            "fields": Self.cardFields,
             "maxResults": limit
         ])
 
@@ -33,6 +47,18 @@ struct JiraClient {
         else { throw JiraError.malformedResponse }
 
         return issues.compactMap(Self.issue(from:))
+    }
+
+    /// One issue with its description and people, for the detail window.
+    func issue(key: String) async throws -> JiraIssue {
+        let escaped = key.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? key
+        let path = Self.issuePath + escaped + "?fields=" + Self.detailFields.joined(separator: ",")
+
+        let json = try await send(request(path: path))
+        guard let object = json as? [String: Any], let issue = Self.issue(from: object) else {
+            throw JiraError.malformedResponse
+        }
+        return issue
     }
 
     func browseURL(for key: String) -> URL {
@@ -85,7 +111,7 @@ struct JiraClient {
 
     // MARK: - Decodificação
 
-    private static func issue(from raw: [String: Any]) -> JiraIssue? {
+    static func issue(from raw: [String: Any]) -> JiraIssue? {
         guard let key = raw["key"] as? String,
               let fields = raw["fields"] as? [String: Any]
         else { return nil }
@@ -100,7 +126,16 @@ struct JiraClient {
             statusCategory: category?["key"] as? String ?? "indeterminate",
             type: (fields["issuetype"] as? [String: Any])?["name"] as? String ?? "Task",
             priority: (fields["priority"] as? [String: Any])?["name"] as? String,
-            updated: (fields["updated"] as? String).flatMap(timestamp.date(from:)) ?? .distantPast
+            updated: (fields["updated"] as? String).flatMap(timestamp.date(from:)) ?? .distantPast,
+            assigneeName: (fields["assignee"] as? [String: Any])?["displayName"] as? String,
+            reporterName: (fields["reporter"] as? [String: Any])?["displayName"] as? String,
+            created: (fields["created"] as? String).flatMap(timestamp.date(from:)),
+            labels: fields["labels"] as? [String] ?? [],
+            // A missing key means the search never asked; a present one that is
+            // null means Jira has no description. The window tells them apart.
+            description: fields.keys.contains("description")
+                ? JiraADF.plainText(from: fields["description"])
+                : nil
         )
     }
 
