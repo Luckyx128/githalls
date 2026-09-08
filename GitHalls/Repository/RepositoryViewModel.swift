@@ -95,6 +95,20 @@ final class RepositoryViewModel {
     /// git refused a pull because it would have written over uncommitted work.
     /// The error alert turns this into an offer rather than a dead end.
     var pullBlockedByLocalChanges = false
+
+    /// The repository's README, as blocks to lay out.
+    ///
+    /// Read from the working tree, so it is always this branch's own copy:
+    /// checking out another branch rewrites the file on disk, and this re-reads
+    /// it.
+    private(set) var readme: [MarkdownBlock] = []
+
+    private(set) var readmeFileName: String?
+
+    /// Repository and branch the README on screen was read for. A status
+    /// refresh happens on every window activation, and re-reading a file that
+    /// cannot have changed is work for nothing.
+    private var readmeKey: String?
     
     var isMerging = false
 
@@ -167,6 +181,7 @@ final class RepositoryViewModel {
             guard statusRequestToken == token else { return }
             changes = newChanges
             currentBranch = branch
+            await loadReadmeIfNeeded(at: repositoryURL, branch: branch)
             currentIdentity = identity
             hasLocalIdentityOverride = hasLocal
             if let sync {
@@ -299,6 +314,9 @@ final class RepositoryViewModel {
     
     func closeRepository() {
         repositoryURL = nil
+        readme = []
+        readmeFileName = nil
+        readmeKey = nil
         changes = []
         selectedChangeID = nil
         currentDiff = nil
@@ -485,6 +503,31 @@ final class RepositoryViewModel {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    // MARK: - Readme
+
+    /// Longest README worth laying out. Past this it is a data file that
+    /// happens to be called README, and rendering it would only hang the pane.
+    private static let readmeSizeLimit = 512 * 1024
+
+    private func loadReadmeIfNeeded(at repoURL: URL, branch: String?) async {
+        let key = "\(repoURL.path)#\(branch ?? "")"
+        guard readmeKey != key else { return }
+        readmeKey = key
+
+        guard let name = ReadmeFinder.pick(from: (try? FileManager.default.contentsOfDirectory(atPath: repoURL.path)) ?? []),
+              let data = try? Data(contentsOf: repoURL.appending(path: name)),
+              data.count <= Self.readmeSizeLimit,
+              let text = String(data: data, encoding: .utf8)
+        else {
+            readme = []
+            readmeFileName = nil
+            return
+        }
+
+        readmeFileName = name
+        readme = MarkdownParser.parse(text)
     }
 
     // MARK: - Conflicts

@@ -11,9 +11,32 @@ import SwiftUI
 struct DiffDetailView: View {
     let viewModel: RepositoryViewModel
 
+    private var readmePane: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                if let name = viewModel.readmeFileName {
+                    Label(name, systemImage: "doc.text")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                MarkdownView(blocks: viewModel.readme)
+            }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
     var body: some View {
         if viewModel.selectedChangeID == nil {
-            ContentUnavailableView("Select a file", systemImage: "doc.text")
+            // Nothing selected is the moment the repository is opened and the
+            // moment a branch is switched into — which is exactly when its
+            // README is worth reading.
+            if viewModel.readme.isEmpty {
+                ContentUnavailableView("Select a file", systemImage: "doc.text")
+            } else {
+                readmePane
+            }
         } else if let diff = viewModel.currentDiff, diff.isBinary {
             // git has no text for this one, so the diff pane shows the file
             // itself instead of a notice saying it cannot.
