@@ -14,8 +14,12 @@ import Foundation
 struct JiraIssue: Identifiable, Equatable, Hashable, Codable {
     let key: String
     let summary: String
-    let status: String
-    let statusCategory: String
+
+    /// `var`, unlike the rest: a move rewrites these two on the board copy
+    /// rather than costing a second search to find out where the card landed.
+    var status: String
+    var statusCategory: String
+
     let type: String
     let priority: String?
     let updated: Date
@@ -23,6 +27,11 @@ struct JiraIssue: Identifiable, Equatable, Hashable, Codable {
     // MARK: - Detail fields
 
     var assigneeName: String?
+
+    /// Who Jira says it is assigned to, in the form an assign has to be written
+    /// back in. The display name cannot be sent back.
+    var assigneeAccountID: String?
+
     var reporterName: String?
     var created: Date?
     var labels: [String] = []

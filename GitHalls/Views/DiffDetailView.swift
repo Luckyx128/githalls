@@ -14,6 +14,15 @@ struct DiffDetailView: View {
     var body: some View {
         if viewModel.selectedChangeID == nil {
             ContentUnavailableView("Select a file", systemImage: "doc.text")
+        } else if let diff = viewModel.currentDiff, diff.isBinary {
+            // git has no text for this one, so the diff pane shows the file
+            // itself instead of a notice saying it cannot.
+            ScrollView {
+                FilePreviewView(viewModel: viewModel,
+                                path: diff.path,
+                                before: .revision("HEAD"),
+                                after: .workingTree)
+            }
         } else if let diff = viewModel.currentDiff {
             // Checked before `isLoadingDiff` so a redundant reload of the
             // already-selected file (e.g. triggered by a status refresh on

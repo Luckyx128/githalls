@@ -23,7 +23,9 @@ struct CommitDetailView: View {
                     CommitDetailHeader(commit: detail.commit)
 
                     ForEach(detail.fileDiffs, id: \.path) { fileDiff in
-                        CommitFileDiffSection(fileDiff: fileDiff)
+                        CommitFileDiffSection(fileDiff: fileDiff,
+                                              viewModel: viewModel,
+                                              commitHash: detail.commit.hash)
                     }
                 }
                 .padding(.vertical)

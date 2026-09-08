@@ -67,6 +67,41 @@ actor GitService {
         )
     }
 
+    /// The same run, with stdout left as bytes. Decoding a PNG as UTF-8 does not
+    /// fail loudly — it quietly replaces every invalid byte — so anything that
+    /// wants the file itself has to come through here.
+    func runData(_ arguments: [String], in directory: URL) async throws -> (data: Data, terminationStatus: Int32) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["git"] + arguments
+        process.currentDirectoryURL = directory
+        var environment = ProcessInfo.processInfo.environment
+        environment["GIT_TERMINAL_PROMPT"] = "0"
+        process.environment = environment
+
+        let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
+        process.standardOutput = stdoutPipe
+        process.standardError = stderrPipe
+
+        defer { withExtendedLifetime((stdoutPipe, stderrPipe)) {} }
+
+        do {
+            try process.run()
+        } catch {
+            throw GitError.failedToLaunch(underlying: error)
+        }
+
+        async let stdoutData = Self.readAll(fromFD: stdoutPipe.fileHandleForReading.fileDescriptor)
+        async let stderrData = Self.readAll(fromFD: stderrPipe.fileHandleForReading.fileDescriptor)
+        async let exitStatus: Int32 = withCheckedContinuation { continuation in
+            process.terminationHandler = { continuation.resume(returning: $0.terminationStatus) }
+        }
+
+        let (outData, _, status) = try await (stdoutData, stderrData, exitStatus)
+        return (outData, status)
+    }
+
     private static nonisolated func readAll(fromFD fd: Int32) async throws -> Data {
         try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
@@ -136,7 +171,18 @@ extension GitService {
     func diff(at repoURL: URL, for change: FileChange) async throws -> FileDiff {
         guard change.status != .untracked else {
             let fileURL = repoURL.appending(path: change.path)
-            let content = try String(contentsOf: fileURL, encoding: .utf8)
+
+            // A new image or archive is not text, and reading it as UTF-8
+            // throws — which used to surface as an error where a diff belongs.
+            guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else {
+                return FileDiff(
+                    path: change.path,
+                    lines: [DiffLine(kind: .hunkHeader, text: "Binary file not shown",
+                                     oldLineNumber: nil, newLineNumber: nil)],
+                    isBinary: true
+                )
+            }
+
             return DiffParser.syntheticAllAdditions(path: change.path, content: content)
         }
 
@@ -145,6 +191,25 @@ extension GitService {
             throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
         }
         return DiffParser.parse(result.standardOutput)
+    }
+}
+
+extension GitService {
+    /// The bytes of a path at a revision — "HEAD", a hash, or "<hash>^".
+    ///
+    /// Nil when the path is not there: a file that was just added has no
+    /// previous revision, and a deleted one has no current one. git says so
+    /// with a non-zero exit, which is a normal answer here and not a failure.
+    func blob(at repoURL: URL, revision: String, path: String) async throws -> Data? {
+        let result = try await runData(["show", "\(revision):\(path)"], in: repoURL)
+
+        return result.terminationStatus == 0 ? result.data : nil
+    }
+
+    /// The bytes on disk — the working tree side of a change, which no revision
+    /// names.
+    func workingTreeBlob(at repoURL: URL, path: String) -> Data? {
+        try? Data(contentsOf: repoURL.appending(path: path))
     }
 }
 
@@ -370,6 +435,35 @@ extension GitService {
         guard result.terminationStatus == 0 else {
             throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
         }
+    }
+
+    /// Pull on a branch that is also ahead. Since git 2.27 a plain `git pull`
+    /// aborts on divergent branches when the reconciliation is not configured
+    /// ("Need to specify how to reconcile divergent branches"), so a merge is
+    /// asked for explicitly — but only when the user set no preference of their
+    /// own, which is theirs to keep.
+    func pullDivergent(at repoURL: URL) async throws {
+        var configured = try await configValue("pull.rebase", at: repoURL)
+        if configured == nil {
+            configured = try await configValue("pull.ff", at: repoURL)
+        }
+
+        let arguments = configured == nil ? ["pull", "--no-rebase"] : ["pull"]
+
+        let result = try await run(Self.credentialHelperOverride + arguments, in: repoURL)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+    }
+
+    /// `git config <key>` exits non-zero when the key is unset, which is a
+    /// normal answer here and not a failure.
+    private func configValue(_ key: String, at repoURL: URL) async throws -> String? {
+        let result = try await run(["config", key], in: repoURL)
+        guard result.terminationStatus == 0 else { return nil }
+
+        let value = result.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
     }
 
     func push(at repoURL: URL, branch: String) async throws {

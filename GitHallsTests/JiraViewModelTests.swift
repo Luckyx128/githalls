@@ -9,8 +9,10 @@ import Foundation
 
 struct JiraViewModelTests {
 
+    /// The view model only forwards now; the naming itself is pinned by
+    /// JiraBranchNameTests. This keeps the seam covered.
     @MainActor
-    @Test func suggestedBranchNameSlugifiesSummary() {
+    @Test func suggestedBranchNameNamesTheTypeAndTheKey() {
         let viewModel = JiraViewModel()
         let issue = JiraIssue(
             key: "PROJ-123",
@@ -21,39 +23,6 @@ struct JiraViewModelTests {
             priority: "High",
             updated: Date()
         )
-        #expect(viewModel.suggestedBranchName(for: issue) == "PROJ-123-fix-login-page-crash")
-    }
-
-    @MainActor
-    @Test func suggestedBranchNameFallsBackToKeyWhenSummaryHasNoAlphanumerics() {
-        let viewModel = JiraViewModel()
-        let issue = JiraIssue(
-            key: "PROJ-9",
-            summary: "!!!",
-            status: "To Do",
-            statusCategory: "new",
-            type: "Task",
-            priority: nil,
-            updated: Date()
-        )
-        #expect(viewModel.suggestedBranchName(for: issue) == "PROJ-9")
-    }
-
-    @MainActor
-    @Test func suggestedBranchNameTruncatesLongSummary() {
-        let viewModel = JiraViewModel()
-        let longSummary = String(repeating: "word ", count: 20)
-        let issue = JiraIssue(
-            key: "PROJ-1",
-            summary: longSummary,
-            status: "To Do",
-            statusCategory: "new",
-            type: "Task",
-            priority: nil,
-            updated: Date()
-        )
-        let result = viewModel.suggestedBranchName(for: issue)
-        #expect(result.hasPrefix("PROJ-1-"))
-        #expect(result.count <= "PROJ-1-".count + 40)
+        #expect(viewModel.suggestedBranchName(for: issue) == "fix-PROJ-123")
     }
 }

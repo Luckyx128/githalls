@@ -38,7 +38,7 @@ enum DiffParser {
 
             if rawLine.hasPrefix("Binary files ") && rawLine.hasSuffix(" differ") {
                 lines.append(DiffLine(kind: .hunkHeader, text: "Binary file not shown", oldLineNumber: nil, newLineNumber: nil))
-                return FileDiff(path: path, lines: lines)
+                return FileDiff(path: path, lines: lines, isBinary: true)
             }
 
             // Diff de merge commit ("@@@ -a,b -c,d +e,f @@@") usa um formato combinado

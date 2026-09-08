@@ -40,7 +40,13 @@ enum ConventionalCommitSuggester {
 
     private static func suggestedType(forModifiedTotals totals: (additions: Int, deletions: Int)) -> ConventionalCommitType {
         let total = totals.additions + totals.deletions
-        guard total > 0 else { return .chore }
+
+        // No line counts is not an empty change: every categorical case has
+        // already returned above, so what is left is a modification whose size
+        // we simply have not been told — which the suggester is asked for
+        // before numstat arrives. A modification of unknown size is a fix, and
+        // calling it a chore said the one thing we know to be wrong.
+        guard total > 0 else { return .fix }
 
         if totals.deletions == 0 || totals.additions > totals.deletions * 3 {
             return .feat

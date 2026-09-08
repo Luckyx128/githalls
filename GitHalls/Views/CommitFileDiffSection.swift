@@ -10,6 +10,12 @@ import SwiftUI
 
 struct CommitFileDiffSection: View {
     let fileDiff: FileDiff
+
+    /// Only set where the commit is known — the preview needs a revision to
+    /// read the bytes from, which a diff alone does not carry.
+    var viewModel: RepositoryViewModel?
+    var commitHash: String?
+
     @State private var isExpanded = true
 
     var body: some View {
@@ -34,7 +40,14 @@ struct CommitFileDiffSection: View {
             }
 
             if isExpanded {
-                DiffView(diff: fileDiff, presentation: .intrinsic(maxHeight: 2000))
+                if fileDiff.isBinary, let viewModel, let commitHash {
+                    FilePreviewView(viewModel: viewModel,
+                                    path: fileDiff.path,
+                                    before: .revision("\(commitHash)^"),
+                                    after: .revision(commitHash))
+                } else {
+                    DiffView(diff: fileDiff, presentation: .intrinsic(maxHeight: 2000))
+                }
             }
         }
         .background(Color.gray.opacity(0.05))

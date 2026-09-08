@@ -16,6 +16,10 @@ struct KanbanBoardView: View {
         VStack(spacing: 0) {
             header
 
+            if let actionMessage = viewModel.actionMessage {
+                actionBanner(actionMessage)
+            }
+
             if viewModel.columns.isEmpty {
                 emptyState
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -82,13 +86,42 @@ struct KanbanBoardView: View {
             : "\(viewModel.shownCount) of \(viewModel.issueCount) issues"
     }
 
+    /// What the last move or assign did. The empty state below can't say it:
+    /// that one is only on screen when the board has no columns, which is
+    /// exactly when a write cannot have happened.
+    private func actionBanner(_ message: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: viewModel.actionFailed ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                .foregroundStyle(viewModel.actionFailed ? .red : .green)
+
+            Text(message)
+                .font(.caption)
+                .lineLimit(2)
+
+            Spacer()
+
+            Button {
+                viewModel.clearActionMessage()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
+        .padding(.horizontal, 12)
+        .padding(.bottom, 8)
+    }
+
     // MARK: - Columns
 
     private var columns: some View {
         ScrollView(.horizontal) {
             HStack(alignment: .top, spacing: 12) {
                 ForEach(viewModel.columns) { column in
-                    KanbanColumnView(column: column) { issue in
+                    KanbanColumnView(column: column, viewModel: viewModel) { issue in
                         openWindow(id: "issue", value: issue)
                     }
                 }
@@ -132,6 +165,7 @@ struct KanbanBoardView: View {
 /// One status column: a header, then its cards, scrolling on their own.
 private struct KanbanColumnView: View {
     let column: JiraIssueGroup
+    @Bindable var viewModel: JiraViewModel
     let onOpen: (JiraIssue) -> Void
 
     var body: some View {
@@ -157,7 +191,7 @@ private struct KanbanColumnView: View {
             ScrollView {
                 LazyVStack(spacing: 8) {
                     ForEach(column.issues) { issue in
-                        KanbanCardView(issue: issue) { onOpen(issue) }
+                        KanbanCardView(issue: issue, viewModel: viewModel) { onOpen(issue) }
                     }
 
                     if column.issues.isEmpty {
@@ -188,10 +222,16 @@ private struct KanbanColumnView: View {
     }
 }
 
-/// KEY · type · priority, the title, and who has it.
+/// KEY · type · priority, the title, and who has it. Right-click moves it.
 private struct KanbanCardView: View {
     let issue: JiraIssue
+    @Bindable var viewModel: JiraViewModel
     let onOpen: () -> Void
+
+    /// Cancelled when the pointer leaves, so crossing the board asks Jira nothing.
+    @State private var hoverTask: Task<Void, Never>?
+
+    private var isBusy: Bool { viewModel.busyIssues.contains(issue.key) }
 
     var body: some View {
         Button(action: onOpen) {
@@ -222,6 +262,63 @@ private struct KanbanCardView: View {
         }
         .buttonStyle(.plain)
         .help("\(issue.key) — \(issue.summary)")
+        .opacity(isBusy ? 0.5 : 1)
+        .disabled(isBusy)
+        .onHover(perform: prefetchOnRest)
+        .contextMenu { menu }
+    }
+
+    /// A right-click has to be instant, and a macOS menu cannot be filled in
+    /// after it opens — so the moves are fetched while the pointer rests on the
+    /// card, which is what always precedes the right-click. One request per card
+    /// actually pointed at, and the cache makes a second look free.
+    private func prefetchOnRest(_ hovering: Bool) {
+        hoverTask?.cancel()
+
+        guard hovering else {
+            hoverTask = nil
+            return
+        }
+
+        hoverTask = Task {
+            // A pointer crossing the board is not a request for anything.
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled else { return }
+
+            await viewModel.prefetchTransitions(for: issue)
+        }
+    }
+
+    @ViewBuilder
+    private var menu: some View {
+        Button("Open Issue", action: onOpen)
+
+        if let transitions = viewModel.cachedTransitions(for: issue) {
+            if transitions.isEmpty {
+                Button("No moves available") {}.disabled(true)
+            } else {
+                ForEach(transitions) { transition in
+                    Button(moveTitle(transition, among: transitions)) {
+                        Task { await viewModel.move(issue, to: transition) }
+                    }
+                }
+            }
+        } else {
+            Button("Loading moves…") {}.disabled(true)
+        }
+
+        if let mine = viewModel.myAccountID, issue.assigneeAccountID == mine {
+            Button("Assigned to you") {}.disabled(true)
+        } else {
+            Button("Assign to me") {
+                Task { await viewModel.assignToMe(issue) }
+            }
+        }
+    }
+
+    /// The ellipsis is Jira's own convention for "this one asks for more".
+    private func moveTitle(_ transition: JiraTransition, among all: [JiraTransition]) -> String {
+        "Move to " + JiraWorkflow.label(for: transition, among: all) + (transition.hasScreen ? "…" : "")
     }
 
     /// The key first, since it is what people say out loud.

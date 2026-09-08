@@ -24,7 +24,15 @@ struct IssueWindowView: View {
     @State private var detailError: String?
     @State private var branchName = ""
 
+    /// The moves this issue can make, fetched once per status the window shows.
+    @State private var transitions: [JiraTransition] = []
+
+    /// The outcome of the last action taken here, and whether it went wrong.
+    @State private var actionResult: (message: String, failed: Bool)?
+
     @Environment(\.openURL) private var openURL
+
+    private var isBusy: Bool { jiraViewModel.busyIssues.contains(detail.key) }
 
     init(issue: JiraIssue, jiraViewModel: JiraViewModel, repositoryViewModel: RepositoryViewModel) {
         self.issue = issue
@@ -48,6 +56,22 @@ struct IssueWindowView: View {
             branchName = jiraViewModel.suggestedBranchName(for: issue)
             await loadDetail()
         }
+        // Re-asked whenever the issue moves: which moves are available is a
+        // function of where it stands.
+        .task(id: detail.status) {
+            transitions = (try? await jiraViewModel.transitions(for: detail)) ?? []
+        }
+        .onChange(of: jiraViewModel.boardIssue(for: issue.key)) { _, fresh in
+            guard let fresh else { return }
+
+            // Only the fields a write can move. The board's copy comes from the
+            // search, which never asks for a description, and this window has
+            // already paid for one.
+            detail.status = fresh.status
+            detail.statusCategory = fresh.statusCategory
+            detail.assigneeName = fresh.assigneeName
+            detail.assigneeAccountID = fresh.assigneeAccountID
+        }
     }
 
     // MARK: - The issue
@@ -60,7 +84,7 @@ struct IssueWindowView: View {
                     .fontDesign(.monospaced)
                     .bold()
 
-                statusBadge
+                statusMenu
 
                 Spacer()
 
@@ -76,7 +100,7 @@ struct IssueWindowView: View {
             Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 4) {
                 metaRow("Type", detail.type)
                 metaRow("Priority", detail.priority ?? "—")
-                metaRow("Assignee", detail.assigneeName ?? "Unassigned")
+                assigneeRow
                 metaRow("Reporter", detail.reporterName ?? "—")
                 metaRow("Created", formatted(detail.created))
                 metaRow("Updated", formatted(detail.updated))
@@ -97,6 +121,30 @@ struct IssueWindowView: View {
         }
     }
 
+    /// Still the badge, and now the way to move the issue: the status is the
+    /// thing you want to change while looking at it.
+    private var statusMenu: some View {
+        Menu {
+            if transitions.isEmpty {
+                Button("No moves available") {}.disabled(true)
+            } else {
+                ForEach(transitions) { transition in
+                    Button(JiraWorkflow.label(for: transition, among: transitions)
+                           + (transition.hasScreen ? "…" : "")) {
+                        Task { await jiraViewModel.move(detail, to: transition) }
+                    }
+                }
+            }
+        } label: {
+            statusBadge
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .disabled(isBusy)
+        .help("Move this issue")
+    }
+
     private var statusBadge: some View {
         HStack(spacing: 6) {
             Circle()
@@ -115,6 +163,28 @@ struct IssueWindowView: View {
         case "done": .green
         case "indeterminate": .blue
         default: .secondary
+        }
+    }
+
+    private var assigneeRow: some View {
+        GridRow {
+            Text("Assignee")
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 8) {
+                Text(detail.assigneeName ?? "Unassigned")
+
+                // Hidden once we know it is already yours — which we may not
+                // know at first paint: the account id arrives with the board's
+                // first search, after this window may already be open.
+                if jiraViewModel.myAccountID == nil || detail.assigneeAccountID != jiraViewModel.myAccountID {
+                    Button("Assign to me") {
+                        Task { await jiraViewModel.assignToMe(detail) }
+                    }
+                    .buttonStyle(.link)
+                    .disabled(isBusy)
+                }
+            }
         }
     }
 
@@ -195,11 +265,15 @@ struct IssueWindowView: View {
                 Button("Create Branch") {
                     Task { await repositoryViewModel.createBranch(named: branchName) }
                 }
-                .disabled(
-                    branchName.trimmingCharacters(in: .whitespaces).isEmpty
-                    || repositoryViewModel.repositoryURL == nil
-                    || repositoryViewModel.isSwitchingBranch
-                )
+                .disabled(!canCreateBranch)
+
+                // Three things in one click, so the help says all three.
+                Button("Start Work") {
+                    Task { await startWork() }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!canCreateBranch || isBusy)
+                .help("Creates the branch, assigns the issue to you, and moves it to the in-progress status.")
             }
 
             if let repoURL = repositoryViewModel.repositoryURL {
@@ -211,6 +285,46 @@ struct IssueWindowView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
+            if let actionResult {
+                Label(actionResult.message,
+                      systemImage: actionResult.failed ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(actionResult.failed ? Color.red : Color.secondary)
+                    .padding(.top, 2)
+            }
+        }
+    }
+
+    private var canCreateBranch: Bool {
+        !branchName.trimmingCharacters(in: .whitespaces).isEmpty
+        && repositoryViewModel.repositoryURL != nil
+        && !repositoryViewModel.isSwitchingBranch
+    }
+
+    /// Branch, then assign, then move — in that order on purpose. The local step
+    /// is the one most likely to fail (no repository open, a name already
+    /// taken), and claiming an issue for work that then has nowhere to happen is
+    /// the worse half to get wrong.
+    private func startWork() async {
+        actionResult = nil
+
+        await repositoryViewModel.createBranch(named: branchName.trimmingCharacters(in: .whitespaces))
+        if let error = repositoryViewModel.errorMessage {
+            actionResult = (error, true)
+            return
+        }
+
+        // A partial success is worth stating plainly, not dressing as an error.
+        switch await jiraViewModel.startWork(on: detail) {
+        case .moved(let status):
+            actionResult = ("Branch created, assigned to you, moved to \(status).", false)
+        case .alreadyInProgress:
+            actionResult = ("Branch created and assigned to you. It was already in progress.", false)
+        case .noCandidate:
+            actionResult = ("Branch created and assigned to you. This workflow has no in-progress move — change the status in Jira.", false)
+        case .failed:
+            actionResult = (jiraViewModel.actionMessage ?? "Jira refused the change.", true)
         }
     }
 }

@@ -37,28 +37,36 @@ struct SyncButton: View {
         viewModel.isFetching || viewModel.isPulling || viewModel.isPushing
     }
 
-    private var isActionable: Bool {
-        !viewModel.hasUpstream || viewModel.syncAhead > 0 || viewModel.syncBehind > 0
+    /// What the button does in the current state.
+    private var action: SyncAction {
+        BranchSync.action(hasUpstream: viewModel.hasUpstream,
+                          ahead: viewModel.syncAhead,
+                          behind: viewModel.syncBehind)
     }
 
+    /// Up to date is a state, not an action — the button says so and stays disabled.
+    private var isActionable: Bool { action != .upToDate }
+
     private var title: String {
-        if !viewModel.hasUpstream { return "Publish Branch" }
-        if viewModel.syncAhead > 0 { return "Push (\(viewModel.syncAhead))" }
-        if viewModel.syncBehind > 0 { return "Pull (\(viewModel.syncBehind))" }
-        return "Up to date"
+        switch action {
+        case .publish: "Publish Branch"
+        case .push: "Push (\(viewModel.syncAhead))"
+        case .pull: "Pull (\(viewModel.syncBehind))"
+        case .pullThenPush: "Sync (↓\(viewModel.syncBehind) ↑\(viewModel.syncAhead))"
+        case .upToDate: "Up to date"
+        }
     }
 
     private var iconName: String {
-        if !viewModel.hasUpstream || viewModel.syncAhead > 0 { return "arrow.up.circle" }
-        if viewModel.syncBehind > 0 { return "arrow.down.circle" }
-        return "checkmark.circle"
+        switch action {
+        case .publish, .push: "arrow.up.circle"
+        case .pull: "arrow.down.circle"
+        case .pullThenPush: "arrow.triangle.2.circlepath"
+        case .upToDate: "checkmark.circle"
+        }
     }
 
     private func performAction() {
-        if !viewModel.hasUpstream || viewModel.syncAhead > 0 {
-            Task { await viewModel.push() }
-        } else if viewModel.syncBehind > 0 {
-            Task { await viewModel.pull() }
-        }
+        Task { await viewModel.sync() }
     }
 }

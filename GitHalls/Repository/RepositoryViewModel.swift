@@ -203,6 +203,21 @@ final class RepositoryViewModel {
             }
         }
     
+    /// The bytes behind a binary file, for the preview that stands in for its
+    /// diff. A nil revision means the working tree — the side no revision names.
+    ///
+    /// Loaded by the view that shows it rather than here: a commit can carry
+    /// twenty images, and only the one on screen is worth a process.
+    func fileBytes(path: String, revision: String?) async -> Data? {
+        guard let repositoryURL else { return nil }
+
+        guard let revision else {
+            return await gitService.workingTreeBlob(at: repositoryURL, path: path)
+        }
+
+        return try? await gitService.blob(at: repositoryURL, revision: revision, path: path)
+    }
+
     func commit() async {
         guard let repositoryURL, !commitSummary.isEmpty else { return }
         
@@ -453,8 +468,67 @@ final class RepositoryViewModel {
             await refreshStatus()
             errorMessage = nil
         } catch {
+            // The ahead/behind counts are only as fresh as the last fetch, so a
+            // push can be the first thing to learn the remote moved. Fetch
+            // before giving up: the refresh turns the button into the sync that
+            // will actually work.
+            if Self.isRejectedForNewRemoteWork(error) {
+                try? await gitService.fetch(at: repositoryURL)
+            }
+            await refreshStatus()
             errorMessage = error.localizedDescription
         }
+    }
+
+    /// The one action the sync button performs, chosen from the current state.
+    func sync() async {
+        switch BranchSync.action(hasUpstream: hasUpstream, ahead: syncAhead, behind: syncBehind) {
+        case .upToDate:
+            return
+        case .publish, .push:
+            await push()
+        case .pull:
+            await pull()
+        case .pullThenPush:
+            await pullThenPush()
+        }
+    }
+
+    /// A diverged branch pulls before it pushes. Both in one action so a merge
+    /// that stops on a conflict stops the push with it.
+    private func pullThenPush() async {
+        guard let repositoryURL, let branch = currentBranch else { return }
+        isPulling = true
+        isPushing = true
+        defer {
+            isPulling = false
+            isPushing = false
+        }
+
+        selectedChangeID = nil
+        currentDiff = nil
+
+        do {
+            try await gitService.pullDivergent(at: repositoryURL)
+            try await gitService.push(at: repositoryURL, branch: branch)
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+
+        // Either way: a merge that conflicted left the working tree changed, and
+        // that is exactly what the user needs to see.
+        await refreshStatus()
+        await loadCommits()
+    }
+
+    /// A push git refused because the upstream has commits this clone has never
+    /// seen — the one rejection a fetch changes the answer to.
+    private static func isRejectedForNewRemoteWork(_ error: Error) -> Bool {
+        guard case GitError.commandFailed(_, let message) = error else { return false }
+
+        let lowered = message.lowercased()
+        return lowered.contains("fetch first") || lowered.contains("non-fast-forward")
     }
     
     func merge(branch: String) async {
