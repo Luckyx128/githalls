@@ -15,18 +15,13 @@ struct ContentView: View {
     @State private var showCloneSheet = false
     @State private var showCreatePRSheet = false
 
-    var body: some View {
-        NavigationSplitView {
-            VStack(spacing: 0) {
-                            Picker("Mode", selection: $viewModel.sidebarMode) {
-                                Text("Changes").tag(SidebarMode.changes)
-                                Text("History").tag(SidebarMode.history)
-                                Text("Kanban").tag(SidebarMode.kanban)
-                            }
-                            .pickerStyle(.segmented)
-                            .labelsHidden()
-                            .padding(8)
+    /// Graph mode hides the sidebar: a 280pt column showing nothing is dead
+    /// space exactly when the graph needs the width most.
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
+    var body: some View {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
+            VStack(spacing: 0) {
                             switch viewModel.sidebarMode {
                             case .changes:
                                 ChangesSidebarView(viewModel: viewModel)
@@ -34,6 +29,8 @@ struct ContentView: View {
                                 HistorySidebarView(viewModel: viewModel)
                             case .kanban:
                                 KanbanSidebarView(viewModel: jiraViewModel)
+                            case .graph:
+                                EmptyView()
                             }
                         }
                         .navigationSplitViewColumnWidth(min: 240, ideal: 280)
@@ -45,7 +42,12 @@ struct ContentView: View {
                 CommitDetailView(viewModel: viewModel)
             case .kanban:
                 KanbanBoardView(viewModel: jiraViewModel)
+            case .graph:
+                GraphView(viewModel: viewModel)
             }
+        }
+        .onChange(of: viewModel.sidebarMode, initial: true) { _, mode in
+            columnVisibility = mode == .graph ? .detailOnly : .all
         }
         .task {
             viewModel.openMostRecentRepositoryIfNeeded()
@@ -59,6 +61,16 @@ struct ContentView: View {
             }
         }
         .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Picker("Mode", selection: $viewModel.sidebarMode) {
+                    Text("Changes").tag(SidebarMode.changes)
+                    Text("History").tag(SidebarMode.history)
+                    Text("Kanban").tag(SidebarMode.kanban)
+                    Text("Graph").tag(SidebarMode.graph)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+            }
             ToolbarItem {
                 SyncButton(viewModel: viewModel)
                     .buttonStyle(.glassProminent)

@@ -11,6 +11,11 @@ enum QuickActions {
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
+    static func copyToClipboard(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+
     static func openInTerminal(_ url: URL) {
         launch("/usr/bin/open", arguments: ["-a", "Terminal", url.path])
     }

@@ -320,6 +320,54 @@ extension GitService {
 }
 
 extension GitService {
+    /// hash, short hash, parents, author, author date, committer date,
+    /// decoration, subject.
+    private static let graphLogFormat = "%H%x1f%h%x1f%P%x1f%an%x1f%aI%x1f%cI%x1f%D%x1f%s%x1e"
+
+    /// The whole repository, not just the branch that happens to be checked out.
+    ///
+    /// `--branches --tags --remotes HEAD` is `--all` minus `refs/stash` and
+    /// `refs/notes/*` — rows the user never made and the menu cannot act on.
+    /// `HEAD` is named explicitly so a detached HEAD still appears in its own
+    /// graph.
+    ///
+    /// `--topo-order`, not `--date-order`: date order interleaves unrelated
+    /// branches, and two commits sharing a timestamp can swap between runs,
+    /// which reshuffles every lane. Topological order guarantees no parent is
+    /// emitted before its children, which is exactly what the lane builder needs.
+    ///
+    /// `--decorate=full` because with git's short decoration a local branch
+    /// named `origin/main` is indistinguishable from the remote-tracking ref.
+    /// `--no-color` guards against a `color.ui = always` in the user's config
+    /// wrapping ANSI escapes around every decoration.
+    func graphLog(at repoURL: URL, limit: Int = 1000) async throws -> [GraphCommit] {
+        let result = try await run([
+            "log",
+            "--branches", "--tags", "--remotes", "HEAD",
+            "--topo-order",
+            "--max-count=\(limit)",
+            "--no-color",
+            "--decorate=full",
+            "--pretty=tformat:\(Self.graphLogFormat)"
+        ], in: repoURL)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+        return CommitGraphParser.parse(result.standardOutput)
+    }
+
+    /// The full message, body included. `%s` is one line, and a menu item that
+    /// says "Copy Commit Message" while silently dropping the body is a lie.
+    func commitMessage(at repoURL: URL, hash: String) async throws -> String {
+        let result = try await run(["log", "-1", "--pretty=format:%B", hash], in: repoURL)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+        return result.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+extension GitService {
     func changedPaths(at repoURL: URL, hash: String) async throws -> [String] {
         let result = try await run(["show", "--pretty=format:", "--name-only", hash], in: repoURL)
         guard result.terminationStatus == 0 else {
@@ -401,6 +449,94 @@ extension GitService {
         guard result.terminationStatus == 0 else {
             throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
         }
+    }
+}
+
+extension GitService {
+    /// Park HEAD on a commit without moving any branch.
+    func checkoutCommit(at repoURL: URL, hash: String) async throws {
+        let result = try await run(["checkout", "--detach", hash], in: repoURL)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+    }
+
+    /// A branch starting anywhere in the graph. `switchTo` false leaves HEAD
+    /// alone — "branch this commit" is often not "go there".
+    func createBranch(at repoURL: URL, name: String, startPoint: String, switchTo: Bool) async throws {
+        let arguments = switchTo
+            ? ["checkout", "-b", name, startPoint]
+            : ["branch", name, startPoint]
+        let result = try await run(arguments, in: repoURL)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+    }
+
+    func renameBranch(at repoURL: URL, from oldName: String, to newName: String) async throws {
+        let result = try await run(["branch", "-m", oldName, newName], in: repoURL)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+    }
+
+    /// `force` is the -D escalation. It is only ever reached through the offer
+    /// the caller makes after -d has been refused, never on the first try.
+    func deleteLocalBranch(at repoURL: URL, name: String, force: Bool) async throws {
+        let result = try await run(["branch", force ? "-D" : "-d", name], in: repoURL)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+    }
+
+    func deleteRemoteBranch(at repoURL: URL, remote: String = "origin", name: String) async throws {
+        let result = try await run(
+            Self.credentialHelperOverride + ["push", remote, "--delete", name],
+            in: repoURL
+        )
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+    }
+
+    func pushBranch(at repoURL: URL, branch: String, setUpstream: Bool) async throws {
+        let arguments = ["push"] + (setUpstream ? ["-u"] : []) + ["origin", branch]
+        let result = try await run(Self.credentialHelperOverride + arguments, in: repoURL)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+    }
+
+    /// Brings a branch that is *not* checked out up to date with its remote.
+    ///
+    /// `git pull origin <branch>` would merge into whatever is checked out
+    /// instead — this refspec is the one command that updates the named branch.
+    /// It is fast-forward only, and git refusing anything else is the correct
+    /// answer: a real merge needs a working tree.
+    func fastForwardBranch(at repoURL: URL, remote: String = "origin", branch: String) async throws {
+        let result = try await run(
+            Self.credentialHelperOverride + ["fetch", remote, "\(branch):\(branch)"],
+            in: repoURL
+        )
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+    }
+
+    func setUpstream(at repoURL: URL, branch: String, upstream: String) async throws {
+        let result = try await run(["branch", "--set-upstream-to=\(upstream)", branch], in: repoURL)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+    }
+
+    /// nil when the branch has no upstream. A non-zero exit is the normal answer
+    /// to that question, not a failure worth throwing over.
+    func upstream(at repoURL: URL, branch: String) async throws -> String? {
+        let result = try await run(["rev-parse", "--abbrev-ref", "\(branch)@{upstream}"], in: repoURL)
+        guard result.terminationStatus == 0 else { return nil }
+        let name = result.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? nil : name
     }
 }
 

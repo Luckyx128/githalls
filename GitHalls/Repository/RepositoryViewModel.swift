@@ -9,7 +9,7 @@ import Foundation
 import Observation
 
 enum SidebarMode: Hashable {
-    case changes, history, kanban
+    case changes, history, kanban, graph
 }
 
 @Observable
@@ -76,6 +76,30 @@ final class RepositoryViewModel {
     
     var branches: [Branch] = []
     var isSwitchingBranch = false
+
+    var graphRows: [GraphRow] = []
+
+    /// Fixed for the whole list, so the text columns line up on every row.
+    var graphLaneCount = 1
+    var isLoadingGraph = false
+
+    /// Serialises the branch operations the graph's context menu offers, so two
+    /// clicks cannot race each other into the same repository.
+    var isMutatingBranch = false
+
+    private var graphRequestToken = UUID()
+
+    /// How far back the graph reads. See `loadGraph` before raising it.
+    private let graphCommitLimit = 1000
+
+    /// Set when `branch -d` was refused because the branch is not fully merged.
+    /// Turns the error alert into an offer, exactly like
+    /// `pullBlockedByLocalChanges`.
+    var pendingForceDeleteBranch: String?
+
+    /// Awaiting the confirmation dialog. Deleting a remote branch has no undo
+    /// and affects everyone else on it.
+    var pendingRemoteBranchDeletion: String?
 
     func requestDiscard(_ change: FileChange) {
         pendingDiscard = change
@@ -302,6 +326,7 @@ final class RepositoryViewModel {
         selectedCommitDetail = nil
         isLoadingCommitDetail = false
         pendingDiscard = nil
+        clearGraphState()
         RecentRepositoriesStore.addOrPromote(url)
         recentRepositoryURLs = RecentRepositoriesStore.load()
         Task { await refreshStatus() }
@@ -329,8 +354,17 @@ final class RepositoryViewModel {
         selectedCommitDetail = nil
         isLoadingCommitDetail = false
         pendingDiscard = nil
+        clearGraphState()
         currentIdentity = nil
         hasLocalIdentityOverride = false
+    }
+
+    private func clearGraphState() {
+        graphRows = []
+        graphLaneCount = 1
+        isLoadingGraph = false
+        pendingForceDeleteBranch = nil
+        pendingRemoteBranchDeletion = nil
     }
 
     func forgetRecent(_ url: URL) {
@@ -348,9 +382,174 @@ final class RepositoryViewModel {
         }
     }
     
+    func loadGraph() async {
+        guard let repositoryURL else { return }
+        let token = UUID()
+        graphRequestToken = token
+        isLoadingGraph = true
+        defer { if graphRequestToken == token { isLoadingGraph = false } }
+        do {
+            let commits = try await gitService.graphLog(at: repositoryURL, limit: graphCommitLimit)
+            // O(rows x lanes) — about ten thousand integer comparisons at the
+            // current limit, well inside a frame. If `graphCommitLimit` ever
+            // grows past a few thousand, wrap this in
+            // `await Task.detached { CommitGraphBuilder.build(commits) }.value`:
+            // the builder is a pure enum over Sendable values, so that is the
+            // whole change.
+            let graph = CommitGraphBuilder.build(commits)
+            // A branch switch or another refresh landed while this was loading.
+            guard graphRequestToken == token else { return }
+            graphRows = graph.rows
+            graphLaneCount = graph.laneCount
+            errorMessage = nil
+        } catch {
+            guard graphRequestToken == token else { return }
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// What every branch operation does afterwards: the working tree, the graph
+    /// and the branch list can all have moved.
+    private func reloadAfterBranchChange() async {
+        await refreshStatus()
+        await loadCommits()
+        await loadGraph()
+        await loadBranches()
+    }
+
+    /// Runs a branch operation, then reloads. Every context-menu action funnels
+    /// through here so none of them can forget the reload or the error alert.
+    private func performBranchOperation(_ operation: () async throws -> Void) async {
+        guard !isMutatingBranch else { return }
+        isMutatingBranch = true
+        defer { isMutatingBranch = false }
+        do {
+            try await operation()
+            await reloadAfterBranchChange()
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+            await reloadAfterBranchChange()
+        }
+    }
+
+    func checkoutCommit(_ hash: String) async {
+        guard let repositoryURL else { return }
+        await performBranchOperation {
+            try await gitService.checkoutCommit(at: repositoryURL, hash: hash)
+        }
+    }
+
+    func createBranch(named name: String, from startPoint: String, switchTo: Bool) async {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard let repositoryURL, !trimmed.isEmpty else { return }
+        await performBranchOperation {
+            try await gitService.createBranch(
+                at: repositoryURL, name: trimmed, startPoint: startPoint, switchTo: switchTo
+            )
+            RecentBranchesStore.addOrPromote(trimmed, for: repositoryURL)
+        }
+        recentBranchNames = RecentBranchesStore.load(for: repositoryURL)
+    }
+
+    func renameBranch(_ oldName: String, to newName: String) async {
+        let trimmed = newName.trimmingCharacters(in: .whitespaces)
+        guard let repositoryURL, !trimmed.isEmpty, trimmed != oldName else { return }
+        await performBranchOperation {
+            try await gitService.renameBranch(at: repositoryURL, from: oldName, to: trimmed)
+            RecentBranchesStore.addOrPromote(trimmed, for: repositoryURL)
+        }
+        recentBranchNames = RecentBranchesStore.load(for: repositoryURL)
+    }
+
+    func deleteLocalBranch(named name: String, force: Bool = false) async {
+        guard let repositoryURL, !isMutatingBranch else { return }
+        isMutatingBranch = true
+        defer { isMutatingBranch = false }
+        pendingForceDeleteBranch = nil
+        do {
+            try await gitService.deleteLocalBranch(at: repositoryURL, name: name, force: force)
+            await reloadAfterBranchChange()
+            errorMessage = nil
+        } catch {
+            // Not a dead end. The commits are still there, and the user may well
+            // want them gone — so say what git said, then offer the escalation.
+            if !force, case GitError.commandFailed(_, let message) = error,
+               BranchDeleteDiagnostics.isUnmerged(message) {
+                pendingForceDeleteBranch = name
+            }
+            errorMessage = error.localizedDescription
+            await reloadAfterBranchChange()
+        }
+    }
+
+    func requestRemoteBranchDeletion(_ name: String) {
+        pendingRemoteBranchDeletion = name
+    }
+
+    func cancelRemoteBranchDeletion() {
+        pendingRemoteBranchDeletion = nil
+    }
+
+    func confirmRemoteBranchDeletion() async {
+        guard let repositoryURL, let remoteBranch = pendingRemoteBranchDeletion else { return }
+        pendingRemoteBranchDeletion = nil
+        // "origin/feature" names the remote and the branch on it.
+        let remote = remoteBranch.contains("/")
+            ? String(remoteBranch[..<remoteBranch.firstIndex(of: "/")!])
+            : "origin"
+        let branch = Branch.remoteShortName(from: remoteBranch)
+        await performBranchOperation {
+            try await gitService.deleteRemoteBranch(at: repositoryURL, remote: remote, name: branch)
+        }
+    }
+
+    func pushBranch(_ name: String, setUpstream: Bool) async {
+        guard let repositoryURL else { return }
+        await performBranchOperation {
+            try await gitService.pushBranch(at: repositoryURL, branch: name, setUpstream: setUpstream)
+        }
+    }
+
+    /// Updates a branch that is not checked out. `pull` is the right call for
+    /// the current branch; this refspec is the only one that moves another.
+    func fastForwardBranch(_ name: String) async {
+        guard let repositoryURL else { return }
+        await performBranchOperation {
+            try await gitService.fastForwardBranch(at: repositoryURL, branch: name)
+        }
+    }
+
+    func setUpstream(of branch: String, to upstream: String) async {
+        let trimmed = upstream.trimmingCharacters(in: .whitespaces)
+        guard let repositoryURL, !trimmed.isEmpty else { return }
+        await performBranchOperation {
+            try await gitService.setUpstream(at: repositoryURL, branch: branch, upstream: trimmed)
+        }
+    }
+
+    func upstream(of branch: String) async -> String? {
+        guard let repositoryURL else { return nil }
+        return try? await gitService.upstream(at: repositoryURL, branch: branch)
+    }
+
+    func copyCommitMessage(_ hash: String) async {
+        guard let repositoryURL else { return }
+        do {
+            let message = try await gitService.commitMessage(at: repositoryURL, hash: hash)
+            QuickActions.copyToClipboard(message)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     func loadCommitDetail() async {
+        // `commits` is History mode's list, which only covers the current
+        // branch. A commit picked out of the graph can belong to any branch, so
+        // fall back to the graph's own rows before giving up.
         guard let repositoryURL, let hash = selectedCommitID,
-              let commit = commits.first(where: { $0.id == hash }) else {
+              let commit = commits.first(where: { $0.id == hash })
+                ?? graphRows.first(where: { $0.commit.hash == hash })?.commit.commit else {
             selectedCommitDetail = nil
             return
         }
@@ -569,6 +768,7 @@ final class RepositoryViewModel {
     func dismissError() {
         errorMessage = nil
         pullBlockedByLocalChanges = false
+        pendingForceDeleteBranch = nil
     }
 
     private static func isBlockedByLocalChanges(_ error: Error) -> Bool {
