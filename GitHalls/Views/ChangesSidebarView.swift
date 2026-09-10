@@ -63,13 +63,25 @@ struct ChangesSidebarView: View {
                     .padding()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if viewModel.changes.isEmpty {
-                    ContentUnavailableView("No Changes", systemImage: "checkmark.circle")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    // A merge whose conflicts are all resolved leaves no
+                    // changes to list — but it is precisely then that the
+                    // banner has the one button that ends it.
+                    VStack(spacing: 0) {
+                        if viewModel.mergeState != nil {
+                            MergeBannerView(viewModel: viewModel)
+                            Divider()
+                        }
+
+                        ContentUnavailableView("No Changes", systemImage: "checkmark.circle")
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
                 } else {
                     ChangesHeaderView(viewModel: viewModel)
                     Divider()
 
-                    if viewModel.hasConflicts {
+                    if viewModel.mergeState != nil {
+                        MergeBannerView(viewModel: viewModel)
+                    } else if viewModel.hasConflicts {
                         conflictBanner
                     }
 

@@ -136,6 +136,10 @@ final class RepositoryViewModel {
     
     var isMerging = false
 
+    /// The merge git left open, if any. Nil the rest of the time.
+    var mergeState: MergeState?
+    var isFinalizingMerge = false
+
     var isCloning = false
 
     var currentIdentity: GitIdentity?
@@ -202,7 +206,9 @@ final class RepositoryViewModel {
             let sync = try? await gitService.branchSync(at: repositoryURL)
             let identity = try? await gitService.identity(at: repositoryURL)
             let hasLocal = (try? await gitService.hasLocalIdentity(at: repositoryURL)) ?? false
+            let merge = try? await gitService.mergeState(at: repositoryURL)
             guard statusRequestToken == token else { return }
+            mergeState = merge
             changes = newChanges
             currentBranch = branch
             await loadReadmeIfNeeded(at: repositoryURL, branch: branch)
@@ -744,10 +750,22 @@ final class RepositoryViewModel {
     /// until these are dealt with, so they are worth calling out separately
     /// rather than leaving in the list looking like ordinary changes.
     var conflictedChanges: [FileChange] {
-        changes.filter { $0.status == .unmerged }
+        let unmerged = changes.filter { $0.status == .unmerged }
+        // During a merge git's own list wins: it knows about conflicts the
+        // porcelain letters can be coy about, and it stays right when the
+        // working tree looks clean.
+        guard let unresolved = mergeState?.unresolvedPaths else { return unmerged }
+        return unresolved.map { path in
+            unmerged.first { $0.path == path }
+                ?? FileChange(path: path, originalPath: nil,
+                              indexStatus: "U", worktreeStatus: "U", status: .unmerged)
+        }
     }
 
     var hasConflicts: Bool { !conflictedChanges.isEmpty }
+
+    /// Whether the open merge is only waiting for its commit.
+    var isMergeReadyToCommit: Bool { mergeState?.isReadyToCommit ?? false }
 
     /// Tells git the file is settled. Resolving *is* staging — there is no
     /// separate "resolved" state, which is why this reuses stage.
@@ -771,6 +789,122 @@ final class RepositoryViewModel {
         guard let repositoryURL else { return }
 
         ExternalEditors.open(repositoryURL.appending(path: change.path), with: editor)
+    }
+
+    /// Hands the whole conflict list to the editor at once — resolving them one
+    /// context menu at a time is the slow part of a big merge.
+    func openAllConflicts(in editor: ExternalEditor) {
+        guard let repositoryURL else { return }
+
+        for change in conflictedChanges {
+            ExternalEditors.open(repositoryURL.appending(path: change.path), with: editor)
+        }
+    }
+
+    /// Stages every conflict that no longer has markers in it. Files still
+    /// holding a `<<<<<<<` are left alone rather than quietly accepted.
+    func markAllResolved() async {
+        guard let repositoryURL, !isStaging else { return }
+
+        let markers = mergeState?.markerPaths ?? []
+        let paths = conflictedChanges.map(\.path).filter { !markers.contains($0) }
+        guard !paths.isEmpty else {
+            if !markers.isEmpty { errorMessage = Self.markerMessage(markers) }
+            return
+        }
+
+        isStaging = true
+        defer { isStaging = false }
+
+        do {
+            try await gitService.stage(at: repositoryURL, paths: paths)
+            await refreshStatus()
+            await loadDiff()
+            errorMessage = markers.isEmpty ? nil : Self.markerMessage(markers)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Writes the merge commit, ending the merge.
+    ///
+    /// A summary the user typed wins over the message git prepared; leaving the
+    /// form empty means "use git's".
+    func finalizeMerge() async {
+        guard let repositoryURL, let mergeState, mergeState.isReadyToCommit, !isFinalizingMerge else { return }
+
+        guard mergeState.markerPaths.isEmpty else {
+            errorMessage = Self.markerMessage(mergeState.markerPaths)
+            return
+        }
+
+        isFinalizingMerge = true
+        defer { isFinalizingMerge = false }
+
+        do {
+            let summary = commitSummary.trimmingCharacters(in: .whitespacesAndNewlines)
+            try await gitService.commitMerge(
+                at: repositoryURL,
+                summary: summary.isEmpty ? nil : summary,
+                description: commitDescription.isEmpty ? nil : commitDescription
+            )
+            commitSummary = ""
+            commitDescription = ""
+            selectedChangeID = nil
+            currentDiff = nil
+            await refreshStatus()
+            await loadCommits()
+            await loadGraph()
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+            await refreshStatus()
+        }
+    }
+
+    /// Throws the merge away and puts the branch back where it was.
+    func abortMerge() async {
+        guard let repositoryURL, mergeState != nil, !isFinalizingMerge else { return }
+
+        isFinalizingMerge = true
+        defer { isFinalizingMerge = false }
+
+        do {
+            try await gitService.abortMerge(at: repositoryURL)
+            commitSummary = ""
+            commitDescription = ""
+            selectedChangeID = nil
+            currentDiff = nil
+            await reloadAfterBranchChange()
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+            await refreshStatus()
+        }
+    }
+
+    /// Moves git's prepared message into the commit form so it can be edited.
+    func useEditableMergeMessage() {
+        guard let raw = mergeState?.preparedMessage else { return }
+
+        let parts = MergeStateParser.splitMessage(raw)
+        commitSummary = parts.summary
+        commitDescription = parts.description
+    }
+
+    /// The one-line summary of git's prepared message, for the banner.
+    var preparedMergeSummary: String? {
+        guard let raw = mergeState?.preparedMessage else { return nil }
+
+        let summary = MergeStateParser.splitMessage(raw).summary
+        return summary.isEmpty ? nil : summary
+    }
+
+    private static func markerMessage(_ paths: [String]) -> String {
+        """
+        Conflict markers are still in \(paths.count == 1 ? "this file" : "these files"):
+        \(paths.joined(separator: "\n"))
+        """
     }
 
     /// Clears the alert and the offer it was carrying.

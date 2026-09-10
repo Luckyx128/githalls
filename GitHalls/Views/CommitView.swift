@@ -28,14 +28,21 @@ struct CommitView: View {
         !stagedChanges.isEmpty
     }
 
+    /// A merge waiting to be committed has nothing staged to show — git already
+    /// holds the result — so the staged-files rule cannot be the only gate.
+    private var canCommit: Bool {
+        hasStagedChanges || viewModel.isMergeReadyToCommit
+    }
+
     private var commitButtonTitle: String {
         if viewModel.isCommitting {
             return "Committing…"
         }
+        let verb = viewModel.isMergeReadyToCommit ? "Commit merge" : "Commit"
         if let branch = viewModel.currentBranch, !branch.isEmpty {
-            return "Commit to \(branch)"
+            return "\(verb) to \(branch)"
         }
-        return "Commit"
+        return verb
     }
 
     var body: some View {
@@ -110,7 +117,7 @@ struct CommitView: View {
                 .frame(maxWidth: .infinity)
             }
             .buttonStyle(.glassProminent)
-            .disabled(viewModel.commitSummary.isEmpty || !hasStagedChanges || viewModel.isCommitting || viewModel.isStaging)
+            .disabled(viewModel.commitSummary.isEmpty || !canCommit || viewModel.isCommitting || viewModel.isStaging)
         }
         .padding(8)
     }

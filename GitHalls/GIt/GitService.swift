@@ -506,6 +506,22 @@ extension GitService {
                     throw GitError.commandFailed(exitCode: restoreResult.terminationStatus, message: restoreResult.standardError)
                 }
             }
+        case .unmerged:
+            // `checkout HEAD` would write our side and leave the index entry
+            // unmerged; `--merge` puts the file back the way the failed merge
+            // left it, conflict markers and all.
+            //
+            // Only while the file really is unmerged, though: `--merge` on a
+            // settled path invents a conflict rather than refusing, and the row
+            // that triggered this can be a screen the merge has moved past.
+            let unmerged = try await run(["ls-files", "--unmerged", "--", change.path], in: repoURL)
+            let arguments = unmerged.terminationStatus == 0 && !unmerged.standardOutput.isEmpty
+                ? ["checkout", "--merge", "--", change.path]
+                : ["checkout", "HEAD", "--", change.path]
+            let result = try await run(arguments, in: repoURL)
+            guard result.terminationStatus == 0 else {
+                throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+            }
         default:
             let result = try await run(["checkout", "HEAD", "--", change.path], in: repoURL)
             guard result.terminationStatus == 0 else {
@@ -764,5 +780,82 @@ extension GitService {
         if name.hasSuffix(".git") { name.removeLast(4) }
         let separators = CharacterSet(charactersIn: "/:")
         return name.components(separatedBy: separators).last ?? name
+    }
+}
+
+// MARK: - Merge in progress
+
+extension GitService {
+    /// The open merge, or nil when there is none.
+    ///
+    /// `git status` cannot answer this: once every conflict is resolved and
+    /// staged it reports a clean tree, which is exactly when the app most needs
+    /// to know a merge is still waiting to be committed. `MERGE_HEAD` is the
+    /// thing that survives that.
+    func mergeState(at repoURL: URL) async throws -> MergeState? {
+        let head = try await run(["rev-parse", "--verify", "--quiet", "MERGE_HEAD"], in: repoURL)
+        guard head.terminationStatus == 0 else { return nil }
+
+        let unmerged = try await run(["ls-files", "--unmerged"], in: repoURL)
+        guard unmerged.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: unmerged.terminationStatus, message: unmerged.standardError)
+        }
+
+        // `diff --check` exits 2 when it finds something — the normal exit-code
+        // guard would turn a useful answer into an error.
+        let worktreeCheck = try await run(["diff", "--check"], in: repoURL)
+        let stagedCheck = try await run(["diff", "--check", "--cached"], in: repoURL)
+        var markers = MergeStateParser.conflictMarkerPaths(worktreeCheck.standardOutput)
+        for path in MergeStateParser.conflictMarkerPaths(stagedCheck.standardOutput) where !markers.contains(path) {
+            markers.append(path)
+        }
+
+        return MergeState(
+            unresolvedPaths: MergeStateParser.unmergedPaths(unmerged.standardOutput),
+            markerPaths: markers,
+            preparedMessage: try? await mergeMessage(at: repoURL)
+        )
+    }
+
+    /// The message git prepared for the merge commit.
+    private func mergeMessage(at repoURL: URL) async throws -> String? {
+        let result = try await run(["rev-parse", "--git-path", "MERGE_MSG"], in: repoURL)
+        guard result.terminationStatus == 0 else { return nil }
+
+        let relative = result.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !relative.isEmpty else { return nil }
+
+        // `--git-path` answers relative to the repository root for a normal
+        // checkout, absolute for a worktree or a separate git dir.
+        let fileURL = relative.hasPrefix("/")
+            ? URL(filePath: relative)
+            : repoURL.appending(path: relative)
+
+        return try? String(contentsOf: fileURL, encoding: .utf8)
+    }
+
+    func abortMerge(at repoURL: URL) async throws {
+        let result = try await run(["merge", "--abort"], in: repoURL)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+    }
+
+    /// Finishes the open merge. A nil summary keeps the message git prepared.
+    func commitMerge(at repoURL: URL, summary: String?, description: String?) async throws {
+        var arguments = ["commit"]
+        if let summary, !summary.isEmpty {
+            arguments += ["-m", summary]
+            if let description, !description.isEmpty {
+                arguments += ["-m", description]
+            }
+        } else {
+            arguments.append("--no-edit")
+        }
+
+        let result = try await run(arguments, in: repoURL)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
     }
 }
