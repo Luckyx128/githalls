@@ -130,3 +130,22 @@ extension GitHubService {
         return components?.url
     }
 }
+
+extension GitHubService {
+    /// The open pull request whose head is `head`, if there is one.
+    ///
+    /// Silent about every failure: no `gh`, not signed in, not a GitHub remote.
+    /// This only exists to spare the user from filling in a form for a pull
+    /// request that already exists, and none of those are worth an alert in
+    /// front of the form they asked for.
+    func openPullRequest(at repoURL: URL, head: String) async -> PullRequestSummary? {
+        guard let result = try? await run(
+            ["pr", "list", "--head", head, "--state", "open", "--limit", "1", "--json", "number,title,url"],
+            in: repoURL
+        ), result.terminationStatus == 0 else {
+            return nil
+        }
+        let data = Data(result.standardOutput.utf8)
+        return (try? JSONDecoder().decode([PullRequestSummary].self, from: data))?.first
+    }
+}

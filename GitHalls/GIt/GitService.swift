@@ -310,12 +310,81 @@ extension GitService {
 
 extension GitService {
     func log(at repoURL: URL, limit: Int = 100) async throws -> [Commit] {
-        let format = "%H%x1f%h%x1f%an%x1f%aI%x1f%s%x1e"
-        let result = try await run(["log", "--max-count=\(limit)", "--pretty=tformat:\(format)"], in: repoURL)
+        let result = try await run(
+            ["log", "--max-count=\(limit)", "--pretty=tformat:\(Self.logFormat)"],
+            in: repoURL
+        )
         guard result.terminationStatus == 0 else {
             throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
         }
         return CommitLogParser.parse(result.standardOutput)
+    }
+
+    /// hash, short hash, author, author date, subject.
+    private static let logFormat = "%H%x1f%h%x1f%an%x1f%aI%x1f%s%x1e"
+}
+
+extension GitService {
+    /// The branch a pull request goes into when nobody says otherwise.
+    ///
+    /// `refs/remotes/origin/HEAD` is what a clone leaves behind pointing at it.
+    /// A repository added with `git remote add` never got one, so the usual two
+    /// names are tried before giving up — guessing wrong here only means the
+    /// sheet opens on "Repository default", which is already the safe answer.
+    func defaultBranch(at repoURL: URL, remote: String = "origin") async -> String? {
+        if let result = try? await run(["symbolic-ref", "--short", "refs/remotes/\(remote)/HEAD"], in: repoURL),
+           result.terminationStatus == 0 {
+            let value = result.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !value.isEmpty { return Branch.remoteShortName(from: value) }
+        }
+        for candidate in ["main", "master"] {
+            if await firstExistingRef(["refs/remotes/\(remote)/\(candidate)"], at: repoURL) != nil {
+                return candidate
+            }
+        }
+        return nil
+    }
+
+    /// The commits on `head` that `base` does not have.
+    ///
+    /// Compared against the remote copy of the base where there is one: a local
+    /// `main` can be weeks stale, and the pull request is opened against what
+    /// the server holds, not against that.
+    ///
+    /// An empty result also covers a base that does not resolve at all. Both
+    /// mean the same thing to the caller — there is nothing here to name the
+    /// pull request after.
+    func commitsAhead(
+        at repoURL: URL,
+        base: String,
+        head: String,
+        remote: String = "origin",
+        limit: Int = 100
+    ) async throws -> [Commit] {
+        guard let baseRef = await firstExistingRef(
+            ["refs/remotes/\(remote)/\(base)", "refs/heads/\(base)"],
+            at: repoURL
+        ) else {
+            return []
+        }
+        let result = try await run(
+            ["log", "--max-count=\(limit)", "--pretty=tformat:\(Self.logFormat)", "\(baseRef)..\(head)"],
+            in: repoURL
+        )
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+        return CommitLogParser.parse(result.standardOutput)
+    }
+
+    private func firstExistingRef(_ candidates: [String], at repoURL: URL) async -> String? {
+        for candidate in candidates {
+            if let result = try? await run(["rev-parse", "--verify", "--quiet", candidate], in: repoURL),
+               result.terminationStatus == 0 {
+                return candidate
+            }
+        }
+        return nil
     }
 }
 

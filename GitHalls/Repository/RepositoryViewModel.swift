@@ -901,6 +901,39 @@ final class RepositoryViewModel {
         }
     }
 
+    /// The open pull request for the branch checked out, if there is one.
+    func openPullRequest() async -> PullRequestSummary? {
+        guard let repositoryURL, let branch = currentBranch else { return nil }
+        return await gitHubService.openPullRequest(at: repositoryURL, head: branch)
+    }
+
+    /// What the create sheet opens with, for a pull request from the branch
+    /// checked out into `base` — `nil` meaning the repository's default branch.
+    func pullRequestDraft(base: String?) async -> PullRequestDraft {
+        guard let repositoryURL, let branch = currentBranch else {
+            return PullRequestDraft(title: "", body: "", commitCount: 0)
+        }
+        let resolvedBase: String
+        if let base {
+            resolvedBase = base
+        } else {
+            resolvedBase = await gitService.defaultBranch(at: repositoryURL) ?? ""
+        }
+        let commits = (try? await gitService.commitsAhead(
+            at: repositoryURL, base: resolvedBase, head: branch
+        )) ?? []
+
+        // Only worth a second call for the one case that reads it: a lone
+        // commit, whose body becomes the pull request's.
+        var message: String?
+        if commits.count == 1 {
+            message = try? await gitService.commitMessage(at: repositoryURL, hash: commits[0].hash)
+        }
+        return PullRequestDraftBuilder.draft(
+            branch: branch, commits: commits, singleCommitMessage: message
+        )
+    }
+
     func createPullRequest(title: String, description: String, base: String?) async {
         guard let repositoryURL else { return }
         isCreatingPullRequest = true
