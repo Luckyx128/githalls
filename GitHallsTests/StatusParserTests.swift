@@ -20,6 +20,21 @@ struct StatusParserTests {
         #expect(changes[0].status == .modified)
     }
 
+    @Test func bothAddedIsUnmerged() {
+        let changes = StatusParser.parse("AA GitHalls/ContentView.swift\n")
+
+        #expect(changes.count == 1)
+        #expect(changes[0].status == .unmerged)
+        #expect(changes[0].isStaged == false)
+    }
+
+    @Test func bothDeletedIsUnmerged() {
+        let changes = StatusParser.parse("DD GitHalls/Old.swift\n")
+
+        #expect(changes.count == 1)
+        #expect(changes[0].status == .unmerged)
+    }
+
     @Test func untrackedFile() {
         let raw = "?? GitHalls/NewFile.swift\n"
         let changes = StatusParser.parse(raw)

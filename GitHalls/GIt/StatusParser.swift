@@ -32,7 +32,9 @@ enum StatusParser {
         
         let status: FileChange.Status = switch (indexStatus, worktreeStatus) {
             case ("?", "?"): .untracked
-            case ("U", _), (_, "U"): .unmerged
+            // Both-added and both-deleted are conflicts too, and neither uses
+            // a "U" — reading them as a plain add or delete hides a conflict.
+            case ("U", _), (_, "U"), ("A", "A"), ("D", "D"): .unmerged
             case ("A", _): .added
             case ("D", _), (_, "D"): .deleted
             default: .modified

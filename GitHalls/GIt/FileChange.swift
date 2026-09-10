@@ -33,6 +33,9 @@ extension FileChange {
     }
 
     var isStaged: Bool {
-        indexStatus != " " && indexStatus != "?"
+        // A conflicted file carries an index letter, but nothing about it is
+        // staged until it is resolved — showing it ticked would be a lie.
+        guard status != .unmerged else { return false }
+        return indexStatus != " " && indexStatus != "?"
     }
 }
