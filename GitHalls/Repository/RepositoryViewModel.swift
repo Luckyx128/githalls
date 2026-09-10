@@ -744,6 +744,52 @@ final class RepositoryViewModel {
         readme = MarkdownParser.parse(text)
     }
 
+    // MARK: - Grouped changes
+
+    /// The changes in the order the sidebar shows them.
+    ///
+    /// Git lists untracked files after everything else, so staging a new file
+    /// moved its row from the bottom of the list to its alphabetical place —
+    /// a jump with no meaning behind it. Sorting up front takes that away:
+    /// from here on a row only ever moves between sections.
+    var sortedChanges: [FileChange] {
+        changes.sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
+    }
+
+    /// Conflicts have their own section, so they are not repeated here.
+    ///
+    /// A file that is staged *and* has further edits on disk counts as staged:
+    /// one row per path is what keeps list selection sane, and its checkbox is
+    /// already ticked.
+    var stagedChanges: [FileChange] {
+        sortedChanges.filter { $0.isStaged && $0.status != .unmerged }
+    }
+
+    var unstagedChanges: [FileChange] {
+        sortedChanges.filter { !$0.isStaged && $0.status != .unmerged }
+    }
+
+    /// Stages or unstages one group, without touching the others.
+    func setStaged(_ staged: Bool, for group: [FileChange]) async {
+        guard let repositoryURL, !isStaging, !group.isEmpty else { return }
+
+        isStaging = true
+        defer { isStaging = false }
+
+        do {
+            let paths = group.map(\.path)
+            if staged {
+                try await gitService.stage(at: repositoryURL, paths: paths)
+            } else {
+                try await gitService.unstage(at: repositoryURL, paths: paths)
+            }
+            await refreshStatus()
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     // MARK: - Conflicts
 
     /// Files git could not merge on its own. Nothing else can be committed

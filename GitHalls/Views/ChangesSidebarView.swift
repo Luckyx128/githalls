@@ -29,6 +29,70 @@ struct ChangesSidebarView: View {
         .background(.quaternary)
     }
 
+    /// One list row. Three sections show the same thing, and a row that
+    /// behaves differently depending on which one it landed in would be a bug
+    /// waiting to happen.
+    @ViewBuilder
+    private func row(_ change: FileChange) -> some View {
+        FileChangeRow(change: change, isDisabled: viewModel.isStaging) {
+            Task { await viewModel.toggleStage(for: change) }
+        }
+        .tag(change.id)
+        .contextMenu {
+            // Resolving is what a conflicted file needs first, so it leads.
+            if change.status == .unmerged {
+                Button("Mark as Resolved") {
+                    Task { await viewModel.markResolved(change) }
+                }
+                Divider()
+            }
+
+            if !ExternalEditors.installed.isEmpty {
+                Menu("Open in") {
+                    ForEach(ExternalEditors.installed) { editor in
+                        Button(editor.name) {
+                            viewModel.open(change, in: editor)
+                        }
+                    }
+                }
+            }
+
+            Button("Reveal in Finder") {
+                if let repoURL = viewModel.repositoryURL {
+                    QuickActions.revealInFinder(repoURL.appending(path: change.path))
+                }
+            }
+            Divider()
+            Button("Discard Changes", role: .destructive) {
+                viewModel.requestDiscard(change)
+            }
+        }
+    }
+
+    /// A section title that carries the bulk action for its own group — the
+    /// header checkbox above the list moves every file at once, which is the
+    /// wrong tool once the list is split in two.
+    private func sectionHeader(
+        _ title: String,
+        count: Int,
+        action: String,
+        staged: Bool,
+        group: [FileChange]
+    ) -> some View {
+        HStack {
+            Text("\(title) (\(count))")
+
+            Spacer()
+
+            Button(action) {
+                Task { await viewModel.setStaged(staged, for: group) }
+            }
+            .buttonStyle(.borderless)
+            .font(.caption)
+            .disabled(viewModel.isStaging)
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             Group {
@@ -85,39 +149,34 @@ struct ChangesSidebarView: View {
                         conflictBanner
                     }
 
-                    List(viewModel.changes, selection: $viewModel.selectedChangeID) { change in
-                        FileChangeRow(change: change, isDisabled: viewModel.isStaging) {
-                            Task { await viewModel.toggleStage(for: change)}
+                    List(selection: $viewModel.selectedChangeID) {
+                        // Conflicts lead: nothing else in the list can be
+                        // committed until they are gone.
+                        if !viewModel.conflictedChanges.isEmpty {
+                            Section {
+                                ForEach(viewModel.conflictedChanges) { row($0) }
+                            } header: {
+                                Text("Conflicts")
+                            }
                         }
-                        .tag(change.id)
-                        .contextMenu {
-                            // Resolving is what a conflicted file needs first,
-                            // so it leads.
-                            if change.status == .unmerged {
-                                Button("Mark as Resolved") {
-                                    Task { await viewModel.markResolved(change) }
-                                }
-                                Divider()
-                            }
 
-                            if !ExternalEditors.installed.isEmpty {
-                                Menu("Open in") {
-                                    ForEach(ExternalEditors.installed) { editor in
-                                        Button(editor.name) {
-                                            viewModel.open(change, in: editor)
-                                        }
-                                    }
-                                }
+                        if !viewModel.stagedChanges.isEmpty {
+                            Section {
+                                ForEach(viewModel.stagedChanges) { row($0) }
+                            } header: {
+                                sectionHeader("Staged", count: viewModel.stagedChanges.count,
+                                              action: "Unstage All", staged: false,
+                                              group: viewModel.stagedChanges)
                             }
+                        }
 
-                            Button("Reveal in Finder") {
-                                if let repoURL = viewModel.repositoryURL {
-                                    QuickActions.revealInFinder(repoURL.appending(path: change.path))
-                                }
-                            }
-                            Divider()
-                            Button("Discard Changes", role: .destructive) {
-                                viewModel.requestDiscard(change)
+                        if !viewModel.unstagedChanges.isEmpty {
+                            Section {
+                                ForEach(viewModel.unstagedChanges) { row($0) }
+                            } header: {
+                                sectionHeader("Unstaged", count: viewModel.unstagedChanges.count,
+                                              action: "Stage All", staged: true,
+                                              group: viewModel.unstagedChanges)
                             }
                         }
                     }
