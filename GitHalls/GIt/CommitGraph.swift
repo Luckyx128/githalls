@@ -26,6 +26,13 @@ struct GraphRow: Identifiable, Equatable {
     let edges: [GraphEdge]
 
     var id: String { commit.hash }
+
+    /// The edges that leave the bottom of this row — everything the next row
+    /// receives at its top. An expanded detail block draws these to keep the
+    /// lane lines running through it.
+    var continuingEdges: [GraphEdge] {
+        edges.filter { $0.kind != .incoming }
+    }
 }
 
 /// One segment inside a single row's vertical band.

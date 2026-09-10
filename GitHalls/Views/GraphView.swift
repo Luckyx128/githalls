@@ -10,6 +10,11 @@ import SwiftUI
 
 /// The whole repository at once: every branch, where it forked, and where it
 /// came back.
+///
+/// Selecting a commit expands it in place rather than filling a side pane. The
+/// graph is the widest thing in the window and the diff is the tallest, so
+/// splitting the two squeezed both; opening the detail under its own row keeps
+/// the commit you clicked next to what it changed.
 struct GraphView: View {
     @Bindable var viewModel: RepositoryViewModel
 
@@ -26,71 +31,61 @@ struct GraphView: View {
     }
 
     var body: some View {
-        // Horizontal, not vertical: a graph row is wide and short — gutter,
-        // chips, summary, author, date and hash all compete for width — while
-        // the commit detail is a tall column of diff hunks. Splitting the other
-        // way would squeeze both into the shape neither wants.
-        HSplitView {
-            content
-                .frame(minWidth: 520, maxWidth: .infinity, maxHeight: .infinity)
-
-            CommitDetailView(viewModel: viewModel)
-                .frame(minWidth: 340, idealWidth: 440, maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .task(id: viewModel.repositoryURL) {
-            await viewModel.loadGraph()
-        }
-        .onChange(of: viewModel.selectedCommitID) {
-            Task { await viewModel.loadCommitDetail() }
-        }
-        .sheet(item: $sheet) { sheet in
-            switch sheet {
-            case .createBranch(let commit):
-                CreateBranchFromCommitSheetView(viewModel: viewModel, commit: commit)
-            case .rename(let branch):
-                RenameBranchSheetView(viewModel: viewModel, branch: branch)
-            case .setUpstream(let branch):
-                SetUpstreamSheetView(viewModel: viewModel, branch: branch)
+        content
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .task(id: viewModel.repositoryURL) {
+                await viewModel.loadGraph()
             }
-        }
-        .alert(
-            viewModel.pendingForceDeleteBranch != nil ? "Branch Not Fully Merged" : "Error",
-            isPresented: Binding(
-                get: { viewModel.errorMessage != nil },
-                set: { if !$0 { viewModel.dismissError() } }
-            )
-        ) {
-            // git refused to delete the branch rather than strand the commits
-            // only it holds. Still doable — but not without saying so.
-            if let branch = viewModel.pendingForceDeleteBranch {
-                Button("Delete Anyway", role: .destructive) {
-                    Task { await viewModel.deleteLocalBranch(named: branch, force: true) }
+            .onChange(of: viewModel.selectedCommitID) {
+                Task { await viewModel.loadCommitDetail() }
+            }
+            .sheet(item: $sheet) { sheet in
+                switch sheet {
+                case .createBranch(let commit):
+                    CreateBranchFromCommitSheetView(viewModel: viewModel, commit: commit)
+                case .rename(let branch):
+                    RenameBranchSheetView(viewModel: viewModel, branch: branch)
+                case .setUpstream(let branch):
+                    SetUpstreamSheetView(viewModel: viewModel, branch: branch)
                 }
-                Button("Cancel", role: .cancel) { viewModel.dismissError() }
-            } else {
-                Button("OK") { viewModel.dismissError() }
             }
-        } message: {
-            Text(viewModel.errorMessage ?? "")
-        }
-        .confirmationDialog(
-            "Delete \"\(viewModel.pendingRemoteBranchDeletion ?? "")\" on the remote?",
-            isPresented: Binding(
-                get: { viewModel.pendingRemoteBranchDeletion != nil },
-                set: { if !$0 { viewModel.cancelRemoteBranchDeletion() } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button("Delete on Remote", role: .destructive) {
-                Task { await viewModel.confirmRemoteBranchDeletion() }
+            .alert(
+                viewModel.pendingForceDeleteBranch != nil ? "Branch Not Fully Merged" : "Error",
+                isPresented: Binding(
+                    get: { viewModel.errorMessage != nil },
+                    set: { if !$0 { viewModel.dismissError() } }
+                )
+            ) {
+                // git refused to delete the branch rather than strand the commits
+                // only it holds. Still doable — but not without saying so.
+                if let branch = viewModel.pendingForceDeleteBranch {
+                    Button("Delete Anyway", role: .destructive) {
+                        Task { await viewModel.deleteLocalBranch(named: branch, force: true) }
+                    }
+                    Button("Cancel", role: .cancel) { viewModel.dismissError() }
+                } else {
+                    Button("OK") { viewModel.dismissError() }
+                }
+            } message: {
+                Text(viewModel.errorMessage ?? "")
             }
-            Button("Cancel", role: .cancel) {
-                viewModel.cancelRemoteBranchDeletion()
+            .confirmationDialog(
+                "Delete \"\(viewModel.pendingRemoteBranchDeletion ?? "")\" on the remote?",
+                isPresented: Binding(
+                    get: { viewModel.pendingRemoteBranchDeletion != nil },
+                    set: { if !$0 { viewModel.cancelRemoteBranchDeletion() } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Delete on Remote", role: .destructive) {
+                    Task { await viewModel.confirmRemoteBranchDeletion() }
+                }
+                Button("Cancel", role: .cancel) {
+                    viewModel.cancelRemoteBranchDeletion()
+                }
+            } message: {
+                Text("This cannot be undone, and it affects everyone else working on that branch.")
             }
-        } message: {
-            Text("This cannot be undone, and it affects everyone else working on that branch.")
-        }
     }
 
     @ViewBuilder
@@ -102,7 +97,10 @@ struct GraphView: View {
                 if viewModel.isLoadingGraph {
                     ProgressView().controlSize(.small)
                 } else {
-                    ContentUnavailableView("No Commits", systemImage: "point.3.filled.connected.trianglepath.dotted")
+                    ContentUnavailableView(
+                        "No Commits in the Last Two Months",
+                        systemImage: "point.3.filled.connected.trianglepath.dotted"
+                    )
                 }
             } else {
                 list
@@ -114,20 +112,37 @@ struct GraphView: View {
     }
 
     private var list: some View {
-        List(viewModel.graphRows, selection: $viewModel.selectedCommitID) { row in
-            GraphRowView(
-                row: row,
-                gutterWidth: gutterWidth,
-                isHead: row.commit.hash == headHash
-            )
-            .tag(row.commit.hash)
-            // The lanes only join up if every row is exactly the same height
-            // with nothing between them. An inset or a separator turns the
-            // graph into dashes.
-            .listRowInsets(EdgeInsets())
-            .listRowSeparator(.hidden)
-            .contextMenu {
-                GraphCommitContextMenu(viewModel: viewModel, commit: row.commit) { sheet = $0 }
+        List(selection: $viewModel.selectedCommitID) {
+            ForEach(viewModel.graphRows) { row in
+                GraphRowView(
+                    row: row,
+                    laneCount: viewModel.graphLaneCount,
+                    gutterWidth: gutterWidth,
+                    isHead: row.commit.hash == headHash
+                )
+                .tag(row.commit.hash)
+                // The lanes only join up if every row is exactly the same height
+                // with nothing between them. An inset or a separator turns the
+                // graph into dashes.
+                .listRowInsets(EdgeInsets())
+                .listRowSeparator(.hidden)
+                .contextMenu {
+                    GraphCommitContextMenu(viewModel: viewModel, commit: row.commit) { sheet = $0 }
+                }
+
+                if viewModel.selectedCommitID == row.commit.hash {
+                    CommitInlineDetailView(
+                        viewModel: viewModel,
+                        row: row,
+                        laneCount: viewModel.graphLaneCount,
+                        gutterWidth: gutterWidth
+                    )
+                    .listRowInsets(EdgeInsets())
+                    .listRowSeparator(.hidden)
+                    // It is a disclosure, not another commit — clicking it must
+                    // not move the selection off the row that opened it.
+                    .selectionDisabled()
+                }
             }
         }
         .listStyle(.plain)

@@ -340,11 +340,16 @@ extension GitService {
     /// named `origin/main` is indistinguishable from the remote-tracking ref.
     /// `--no-color` guards against a `color.ui = always` in the user's config
     /// wrapping ANSI escapes around every decoration.
+    /// How far back the graph reaches. `--max-count` stays as a ceiling for a
+    /// repository that commits thousands of times in this window.
+    private static let graphLogSince = "2.months"
+
     func graphLog(at repoURL: URL, limit: Int = 1000) async throws -> [GraphCommit] {
         let result = try await run([
             "log",
             "--branches", "--tags", "--remotes", "HEAD",
             "--topo-order",
+            "--since=\(Self.graphLogSince)",
             "--max-count=\(limit)",
             "--no-color",
             "--decorate=full",

@@ -14,21 +14,46 @@ enum GraphMetrics {
     static let nodeRadius: CGFloat = 4
     static let lineWidth: CGFloat = 1.5
 
-    /// A repository with forty concurrent branches must not get a gutter that
-    /// eats the window. The rightmost lanes clip instead.
-    static let maxGutterWidth: CGFloat = 220
+    /// How many columns the gutter ever draws.
+    ///
+    /// A repository with dozens of concurrent branches would otherwise push the
+    /// summary off the row — and, worse, draw its outer lanes at an x the gutter
+    /// never reserved, straight through the commit text.
+    static let maxDrawnLanes = 8
+
+    /// The strip past the last drawn column where everything further out is
+    /// collapsed onto one marker.
+    static let overflowWidth: CGFloat = 14
+
+    static func drawnLaneCount(_ laneCount: Int) -> Int {
+        min(max(laneCount, 1), maxDrawnLanes)
+    }
+
+    static func hasOverflow(laneCount: Int) -> Bool {
+        laneCount > maxDrawnLanes
+    }
 
     static func gutterWidth(laneCount: Int) -> CGFloat {
-        min(laneInset * 2 + laneWidth * CGFloat(max(laneCount, 1)), maxGutterWidth)
+        laneInset * 2
+            + laneWidth * CGFloat(drawnLaneCount(laneCount))
+            + (hasOverflow(laneCount: laneCount) ? overflowWidth : 0)
     }
 
     static func x(lane: Int) -> CGFloat {
         laneInset + laneWidth * (CGFloat(lane) + 0.5)
     }
+
+    static func isDrawn(lane: Int) -> Bool { lane < maxDrawnLanes }
+
+    /// Where a line heading for a column the gutter does not draw leaves.
+    static func overflowX(laneCount: Int) -> CGFloat {
+        laneInset + laneWidth * CGFloat(drawnLaneCount(laneCount)) + overflowWidth / 2
+    }
 }
 
 struct GraphRowView: View {
     let row: GraphRow
+    let laneCount: Int
     let gutterWidth: CGFloat
     let isHead: Bool
 
@@ -41,7 +66,7 @@ struct GraphRowView: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            GraphLaneCanvas(row: row, isHead: isHead)
+            GraphLaneCanvas(row: row, laneCount: laneCount, isHead: isHead)
                 .frame(width: gutterWidth)
 
             if !row.commit.refs.isEmpty {
@@ -78,8 +103,9 @@ struct GraphRowView: View {
 /// Everything it draws comes from `row.edges`, which already spans the full
 /// height of the band, so consecutive rows tile into continuous lines — as long
 /// as the list gives every row the same height and no spacing between them.
-private struct GraphLaneCanvas: View {
+struct GraphLaneCanvas: View {
     let row: GraphRow
+    let laneCount: Int
     let isHead: Bool
 
     var body: some View {
@@ -95,41 +121,64 @@ private struct GraphLaneCanvas: View {
                 stroke(&context, edge: edge, height: size.height, mid: mid)
             }
 
-            let centre = CGPoint(x: GraphMetrics.x(lane: row.lane), y: mid)
-            let radius = GraphMetrics.nodeRadius
-            let node = Path(ellipseIn: CGRect(
-                x: centre.x - radius, y: centre.y - radius,
-                width: radius * 2, height: radius * 2
-            ))
-            let color = GraphLanePalette.color(forLane: row.lane)
-
-            if isHead {
-                // A halo in the row's own background, so the ring below reads as
-                // a ring rather than merging into whatever line passes behind.
-                context.stroke(
-                    Path(ellipseIn: CGRect(
-                        x: centre.x - radius - 3, y: centre.y - radius - 3,
-                        width: (radius + 3) * 2, height: (radius + 3) * 2
-                    )),
-                    with: .color(color.opacity(0.35)),
-                    lineWidth: 2
-                )
-            }
-
-            if row.commit.isMerge {
-                // Hollow: a merge is where lines meet, not where work landed.
-                context.fill(node, with: .color(.white.opacity(0.001)))
-                context.stroke(node, with: .color(color), lineWidth: 2)
-            } else {
-                context.fill(node, with: .color(color))
-            }
+            drawNode(&context, mid: mid)
         }
+        // Belt and braces: the lane cap already keeps every coordinate inside,
+        // and this guarantees nothing can reach the commit text if it does not.
+        .clipped()
         .allowsHitTesting(false)
     }
 
+    private func drawNode(_ context: inout GraphicsContext, mid: CGFloat) {
+        let color = GraphLanePalette.color(forLane: row.lane)
+        let radius = GraphMetrics.nodeRadius
+
+        guard GraphMetrics.isDrawn(lane: row.lane) else {
+            // The commit lives in a column the gutter does not draw. It still
+            // has a row — only its position in the graph is off to the right.
+            let centre = CGPoint(x: GraphMetrics.overflowX(laneCount: laneCount), y: mid)
+            let dot = Path(ellipseIn: CGRect(
+                x: centre.x - 2.5, y: centre.y - 2.5, width: 5, height: 5
+            ))
+            context.fill(dot, with: .color(color.opacity(0.75)))
+            return
+        }
+
+        let centre = CGPoint(x: GraphMetrics.x(lane: row.lane), y: mid)
+        let node = Path(ellipseIn: CGRect(
+            x: centre.x - radius, y: centre.y - radius,
+            width: radius * 2, height: radius * 2
+        ))
+
+        if isHead {
+            context.stroke(
+                Path(ellipseIn: CGRect(
+                    x: centre.x - radius - 3, y: centre.y - radius - 3,
+                    width: (radius + 3) * 2, height: (radius + 3) * 2
+                )),
+                with: .color(color.opacity(0.35)),
+                lineWidth: 2
+            )
+        }
+
+        if row.commit.isMerge {
+            // Hollow: a merge is where lines meet, not where work landed.
+            context.stroke(node, with: .color(color), lineWidth: 2)
+        } else {
+            context.fill(node, with: .color(color))
+        }
+    }
+
     private func stroke(_ context: inout GraphicsContext, edge: GraphEdge, height: CGFloat, mid: CGFloat) {
-        let x0 = GraphMetrics.x(lane: edge.from)
-        let x1 = GraphMetrics.x(lane: edge.to)
+        let fromDrawn = GraphMetrics.isDrawn(lane: edge.from)
+        let toDrawn = GraphMetrics.isDrawn(lane: edge.to)
+        // Both ends are past the cap: nothing meaningful to show, and drawing it
+        // would just pile lines on the overflow marker.
+        guard fromDrawn || toDrawn else { return }
+
+        let overflowX = GraphMetrics.overflowX(laneCount: laneCount)
+        let x0 = fromDrawn ? GraphMetrics.x(lane: edge.from) : overflowX
+        let x1 = toDrawn ? GraphMetrics.x(lane: edge.to) : overflowX
         var path = Path()
 
         switch edge.kind {
@@ -160,75 +209,41 @@ private struct GraphLaneCanvas: View {
             }
         }
 
+        let color = GraphLanePalette.color(forLane: edge.colorLane)
         context.stroke(
             path,
-            with: .color(GraphLanePalette.color(forLane: edge.colorLane)),
+            with: .color(fromDrawn && toDrawn ? color : color.opacity(0.45)),
             style: StrokeStyle(lineWidth: GraphMetrics.lineWidth, lineCap: .round)
         )
     }
 }
 
-/// The refs pointing at a commit. Capped, because a commit carrying eight of
-/// them would otherwise squeeze the summary to nothing.
-private struct GraphRefChips: View {
-    let refs: [GitRef]
-
-    private static let visibleLimit = 3
+/// The gutter of an expanded detail block.
+///
+/// An expanded row breaks the list's run of equal-height bands, so the lane
+/// lines would stop dead at the top of the detail and start again below it.
+/// Continuing them here keeps the graph readable while a commit is open.
+struct GraphLaneContinuation: View {
+    /// The edges leaving the bottom of the row above.
+    let edges: [GraphEdge]
+    let laneCount: Int
 
     var body: some View {
-        HStack(spacing: 4) {
-            ForEach(refs.prefix(Self.visibleLimit)) { ref in
-                chip(for: ref)
+        Canvas { context, size in
+            for edge in edges {
+                guard GraphMetrics.isDrawn(lane: edge.to) else { continue }
+                let x = GraphMetrics.x(lane: edge.to)
+                var path = Path()
+                path.move(to: CGPoint(x: x, y: 0))
+                path.addLine(to: CGPoint(x: x, y: size.height))
+                context.stroke(
+                    path,
+                    with: .color(GraphLanePalette.color(forLane: edge.colorLane).opacity(0.5)),
+                    style: StrokeStyle(lineWidth: GraphMetrics.lineWidth, lineCap: .butt)
+                )
             }
-            if refs.count > Self.visibleLimit {
-                Text("+\(refs.count - Self.visibleLimit)")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
         }
-        .fixedSize()
-        .help(refs.map(\.name).joined(separator: ", "))
-    }
-
-    @ViewBuilder
-    private func chip(for ref: GitRef) -> some View {
-        HStack(spacing: 3) {
-            Image(systemName: symbol(for: ref.kind))
-            Text(ref.name)
-                .lineLimit(1)
-        }
-        .font(.caption2)
-        .fontWeight(ref.kind == .head ? .semibold : .regular)
-        .foregroundStyle(foreground(for: ref.kind))
-        .padding(.horizontal, 6)
-        .padding(.vertical, 2)
-        .background(background(for: ref.kind), in: Capsule())
-    }
-
-    private func symbol(for kind: GitRef.Kind) -> String {
-        switch kind {
-        case .head: "arrowtriangle.right.fill"
-        case .localBranch: "arrow.triangle.branch"
-        case .remoteBranch: "cloud"
-        case .tag: "tag"
-        }
-    }
-
-    private func foreground(for kind: GitRef.Kind) -> Color {
-        switch kind {
-        case .head: .white
-        case .localBranch: .accentColor
-        case .remoteBranch: .secondary
-        case .tag: .yellow
-        }
-    }
-
-    private func background(for kind: GitRef.Kind) -> AnyShapeStyle {
-        switch kind {
-        case .head: AnyShapeStyle(Color.accentColor)
-        case .localBranch: AnyShapeStyle(Color.accentColor.opacity(0.18))
-        case .remoteBranch: AnyShapeStyle(.quaternary)
-        case .tag: AnyShapeStyle(Color.yellow.opacity(0.20))
-        }
+        .clipped()
+        .allowsHitTesting(false)
     }
 }
