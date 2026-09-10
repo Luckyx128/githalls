@@ -18,17 +18,13 @@ struct CommitDetailView: View {
             ProgressView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let detail = viewModel.selectedCommitDetail {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    CommitDetailHeader(commit: detail.commit)
+            VStack(alignment: .leading, spacing: 0) {
+                CommitDetailHeader(commit: detail.commit, files: detail.files)
+                    .padding(.vertical, 10)
 
-                    ForEach(detail.fileDiffs, id: \.path) { fileDiff in
-                        CommitFileDiffSection(fileDiff: fileDiff,
-                                              viewModel: viewModel,
-                                              commitHash: detail.commit.hash)
-                    }
-                }
-                .padding(.vertical)
+                Divider()
+
+                CommitFilesBrowser(viewModel: viewModel, detail: detail)
             }
         } else {
             ContentUnavailableView("No details to show", systemImage: "clock")
@@ -38,12 +34,14 @@ struct CommitDetailView: View {
 
 struct CommitDetailHeader: View {
     let commit: Commit
+    var files: [CommitFile] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(commit.summary)
                 .font(.title3)
                 .bold()
+                .textSelection(.enabled)
 
             HStack(spacing: 8) {
                 Text(commit.authorName)
@@ -52,6 +50,16 @@ struct CommitDetailHeader: View {
                 Text("·")
                 Text(commit.shortHash)
                     .font(.system(.body, design: .monospaced))
+
+                if !files.isEmpty {
+                    Text("·")
+                    Text(files.count == 1 ? "1 file" : "\(files.count) files")
+
+                    DiffLineCountBadges(
+                        added: files.compactMap(\.addedLineCount).reduce(0, +),
+                        removed: files.compactMap(\.removedLineCount).reduce(0, +)
+                    )
+                }
             }
             .font(.subheadline)
             .foregroundStyle(.secondary)

@@ -558,19 +558,28 @@ final class RepositoryViewModel {
         isLoadingCommitDetail = true
         defer { if commitDetailRequestToken == token { isLoadingCommitDetail = false } }
         do {
-            let paths = try await gitService.changedPaths(at: repositoryURL, hash: hash)
-            var diffs: [FileDiff] = []
-            for path in paths {
-                diffs.append(try await gitService.commitFileDiff(at: repositoryURL, hash: hash, path: path))
-            }
+            // Only the file list, not the diffs. A merge can carry hundreds of
+            // files and one `git show` each would stall the whole selection for
+            // text nobody has asked to see yet — `CommitFilesBrowser` fetches
+            // the one file it is showing.
+            let files = try await gitService.commitFiles(at: repositoryURL, hash: hash)
             guard commitDetailRequestToken == token else { return }
-            selectedCommitDetail = CommitDetail(commit: commit, fileDiffs: diffs)
+            selectedCommitDetail = CommitDetail(commit: commit, files: files)
             errorMessage = nil
         } catch {
             guard commitDetailRequestToken == token else { return }
             selectedCommitDetail = nil
             errorMessage = error.localizedDescription
         }
+    }
+
+    /// The diff of a single file in a commit, read on demand.
+    ///
+    /// Returns `nil` rather than raising: a file whose diff cannot be read is
+    /// worth an empty pane, not an alert covering the commit behind it.
+    func commitFileDiff(hash: String, file: CommitFile) async -> FileDiff? {
+        guard let repositoryURL else { return nil }
+        return try? await gitService.commitFileDiff(at: repositoryURL, hash: hash, pathspec: file.pathspec)
     }
 
     func confirmDiscard(_ change: FileChange) async {

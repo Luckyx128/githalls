@@ -19,5 +19,12 @@ struct Commit: Identifiable, Hashable {
 
 struct CommitDetail {
     let commit: Commit
-    let fileDiffs: [FileDiff]
+    let files: [CommitFile]
+
+    /// Binaries are left out: git has no lines to count for them, and a total
+    /// that silently treats them as zero would be a different number than the
+    /// one the file rows add up to.
+    var addedLineCount: Int { files.compactMap(\.addedLineCount).reduce(0, +) }
+
+    var removedLineCount: Int { files.compactMap(\.removedLineCount).reduce(0, +) }
 }

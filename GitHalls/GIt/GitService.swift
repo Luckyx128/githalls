@@ -368,18 +368,31 @@ extension GitService {
 }
 
 extension GitService {
-    func changedPaths(at repoURL: URL, hash: String) async throws -> [String] {
-        let result = try await run(["show", "--pretty=format:", "--name-only", hash], in: repoURL)
+    /// A merge shows nothing by default: git refuses to pick which parent the
+    /// diff is against. Comparing with the first parent is the question a
+    /// history view is actually asking — what landed on this branch when the
+    /// merge went in — and it is the only form the diff parser understands, the
+    /// combined one being a format of its own.
+    private static let firstParentMergeDiff = "--diff-merges=first-parent"
+
+    func commitFiles(at repoURL: URL, hash: String) async throws -> [CommitFile] {
+        let result = try await run(
+            ["show", "--pretty=format:", "--raw", "--numstat", Self.firstParentMergeDiff, hash],
+            in: repoURL
+        )
         guard result.terminationStatus == 0 else {
             throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
         }
-        return result.standardOutput
-            .split(separator: "\n")
-            .map(String.init)
+        return CommitFileParser.parse(result.standardOutput)
     }
 
-    func commitFileDiff(at repoURL: URL, hash: String, path: String) async throws -> FileDiff {
-        let result = try await run(["show", "--no-color", "--pretty=format:", hash, "--", path], in: repoURL)
+    /// `pathspec` is both sides of a rename where there was one, so git still
+    /// reports it as a rename rather than as a file that appeared from nowhere.
+    func commitFileDiff(at repoURL: URL, hash: String, pathspec: [String]) async throws -> FileDiff {
+        let result = try await run(
+            ["show", "--no-color", "--pretty=format:", Self.firstParentMergeDiff, hash, "--"] + pathspec,
+            in: repoURL
+        )
         guard result.terminationStatus == 0 else {
             throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
         }

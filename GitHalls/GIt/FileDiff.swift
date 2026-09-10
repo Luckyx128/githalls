@@ -30,4 +30,11 @@ struct FileDiff {
 
     /// highlight.js language id inferred from `path`, or `nil` when unknown.
     var languageHint: String? { SyntaxLanguage.forPath(path) }
+
+    /// Counted from the parsed lines rather than asked of git again: the diff
+    /// is already here, and `git show --numstat` would be a second round trip
+    /// for something this file can answer itself.
+    var addedLineCount: Int { lines.count { $0.kind == .addition } }
+
+    var removedLineCount: Int { lines.count { $0.kind == .deletion } }
 }
