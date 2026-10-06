@@ -61,6 +61,12 @@ struct GraphCommitContextMenu: View {
 
         Divider()
 
+        Button("Revert Commit") {
+            Task { await viewModel.revertCommit(commit.hash) }
+        }
+        .disabled(viewModel.isRevertBlocked)
+        .help(commit.isMerge ? "Reverts the merge against its first parent (-m 1)" : "Adds a commit that undoes this one")
+
         Button("Checkout Commit (Detached)") {
             Task { await viewModel.checkoutCommit(commit.hash) }
         }

@@ -156,6 +156,7 @@ final class RepositoryViewModel {
     private var readmeKey: String?
     
     var isMerging = false
+    var isReverting = false
 
     /// The merge git left open, if any. Nil the rest of the time.
     var mergeState: MergeState?
@@ -791,6 +792,41 @@ final class RepositoryViewModel {
         }
     }
 
+    // MARK: - Revert
+
+    /// Reverting needs a quiet tree: git refuses over local edits anyway, and
+    /// mid-merge there is no clean base to revert onto.
+    var isRevertBlocked: Bool {
+        isReverting || isCommitting || isFinalizingMerge || mergeState != nil || hasConflicts
+    }
+
+    /// Adds a commit undoing `hash`. A revert that conflicts is not a failure:
+    /// it leaves REVERT_HEAD, which `refreshStatus` surfaces in the merge banner.
+    func revertCommit(_ hash: String) async {
+        guard let repositoryURL, !isRevertBlocked else { return }
+        isReverting = true
+        defer { isReverting = false }
+        do {
+            try await gitService.revert(at: repositoryURL, hash: hash)
+            errorMessage = nil
+        } catch {
+            await refreshStatus()
+            if mergeState?.operation == .revert {
+                errorMessage = "The revert hit conflicts. Resolve them and finish the revert, or abort it."
+            } else {
+                errorMessage = error.localizedDescription
+            }
+            await loadCommits()
+            await loadGraph()
+            return
+        }
+        selectedChangeID = nil
+        currentDiff = nil
+        await refreshStatus()
+        await loadCommits()
+        await loadGraph()
+    }
+
     func pull() async {
         guard let repositoryURL else { return }
         isPulling = true
@@ -1003,7 +1039,8 @@ final class RepositoryViewModel {
             try await gitService.commitMerge(
                 at: repositoryURL,
                 summary: summary.isEmpty ? nil : summary,
-                description: commitDescription.isEmpty ? nil : commitDescription
+                description: commitDescription.isEmpty ? nil : commitDescription,
+                operation: mergeState.operation
             )
             commitSummary = ""
             commitDescription = ""
@@ -1021,13 +1058,13 @@ final class RepositoryViewModel {
 
     /// Throws the merge away and puts the branch back where it was.
     func abortMerge() async {
-        guard let repositoryURL, mergeState != nil, !isFinalizingMerge else { return }
+        guard let repositoryURL, let operation = mergeState?.operation, !isFinalizingMerge else { return }
 
         isFinalizingMerge = true
         defer { isFinalizingMerge = false }
 
         do {
-            try await gitService.abortMerge(at: repositoryURL)
+            try await gitService.abortMerge(at: repositoryURL, operation: operation)
             commitSummary = ""
             commitDescription = ""
             selectedChangeID = nil

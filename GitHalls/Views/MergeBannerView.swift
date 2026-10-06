@@ -14,6 +14,7 @@ struct MergeBannerView: View {
     @Bindable var viewModel: RepositoryViewModel
     @State private var confirmingAbort = false
 
+    private var operation: MergeState.Operation { viewModel.mergeState?.operation ?? .merge }
     private var markerPaths: [String] { viewModel.mergeState?.markerPaths ?? [] }
 
     var body: some View {
@@ -65,7 +66,7 @@ struct MergeBannerView: View {
 
                 Spacer()
 
-                Button("Abort Merge", role: .destructive) {
+                Button(operation.abortTitle, role: .destructive) {
                     confirmingAbort = true
                 }
                 .buttonStyle(.borderless)
@@ -77,14 +78,14 @@ struct MergeBannerView: View {
         .padding(.vertical, 8)
         .background(.quaternary)
         .confirmationDialog(
-            "Abort this merge?",
+            "Abort this \(operation.noun)?",
             isPresented: $confirmingAbort,
             titleVisibility: .visible
         ) {
-            Button("Abort Merge", role: .destructive) {
+            Button(operation.abortTitle, role: .destructive) {
                 Task { await viewModel.abortMerge() }
             }
-            Button("Keep Merging", role: .cancel) {}
+            Button("Keep Resolving", role: .cancel) {}
         } message: {
             Text("The branch goes back to where it was. Every conflict you resolved is discarded.")
         }
@@ -131,7 +132,7 @@ struct MergeBannerView: View {
                 if viewModel.isFinalizingMerge {
                     ProgressView().controlSize(.small)
                 }
-                Text(viewModel.isFinalizingMerge ? "Committing…" : "Finish Merge")
+                Text(viewModel.isFinalizingMerge ? "Committing…" : operation.finishTitle)
             }
         }
         .buttonStyle(.glassProminent)

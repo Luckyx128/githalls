@@ -66,7 +66,7 @@ struct CommitView: View {
             return "Committing…"
         }
         if viewModel.isAmending { return "Amend" }
-        let verb = viewModel.isMergeReadyToCommit ? "Commit merge" : "Commit"
+        let verb = viewModel.isMergeReadyToCommit ? "Commit \(viewModel.mergeState?.operation.noun ?? "merge")" : "Commit"
         if let branch = viewModel.currentBranch, !branch.isEmpty {
             return "\(verb) to \(branch)"
         }

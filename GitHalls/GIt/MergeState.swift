@@ -12,6 +12,19 @@ import Foundation
 /// state is read from git itself: `MERGE_HEAD` says a merge is open, and
 /// `ls-files --unmerged` says what is still in the way.
 struct MergeState: Equatable {
+    /// A revert that stopped on conflicts is resolved exactly like a merge —
+    /// same files, same staging, same commit — so it rides this type and only
+    /// the wording and the abort/commit commands differ.
+    enum Operation: Equatable {
+        case merge, revert
+
+        var noun: String { self == .merge ? "merge" : "revert" }
+        var abortTitle: String { self == .merge ? "Abort Merge" : "Abort Revert" }
+        var finishTitle: String { self == .merge ? "Finish Merge" : "Finish Revert" }
+    }
+
+    let operation: Operation
+
     /// Paths git still considers unmerged. Empty means every conflict is settled.
     let unresolvedPaths: [String]
 

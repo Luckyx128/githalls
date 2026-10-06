@@ -866,8 +866,14 @@ extension GitService {
     /// to know a merge is still waiting to be committed. `MERGE_HEAD` is the
     /// thing that survives that.
     func mergeState(at repoURL: URL) async throws -> MergeState? {
-        let head = try await run(["rev-parse", "--verify", "--quiet", "MERGE_HEAD"], in: repoURL)
-        guard head.terminationStatus == 0 else { return nil }
+        let mergeHead = try await run(["rev-parse", "--verify", "--quiet", "MERGE_HEAD"], in: repoURL)
+        var operation = MergeState.Operation.merge
+        if mergeHead.terminationStatus != 0 {
+            // A conflicted `git revert` leaves REVERT_HEAD instead.
+            let revertHead = try await run(["rev-parse", "--verify", "--quiet", "REVERT_HEAD"], in: repoURL)
+            guard revertHead.terminationStatus == 0 else { return nil }
+            operation = .revert
+        }
 
         let unmerged = try await run(["ls-files", "--unmerged"], in: repoURL)
         guard unmerged.terminationStatus == 0 else {
@@ -884,6 +890,7 @@ extension GitService {
         }
 
         return MergeState(
+            operation: operation,
             unresolvedPaths: MergeStateParser.unmergedPaths(unmerged.standardOutput),
             markerPaths: markers,
             preparedMessage: try? await mergeMessage(at: repoURL)
@@ -907,26 +914,64 @@ extension GitService {
         return try? String(contentsOf: fileURL, encoding: .utf8)
     }
 
-    func abortMerge(at repoURL: URL) async throws {
-        let result = try await run(["merge", "--abort"], in: repoURL)
+    func abortMerge(at repoURL: URL, operation: MergeState.Operation = .merge) async throws {
+        let result = try await run([operation.noun, "--abort"], in: repoURL)
         guard result.terminationStatus == 0 else {
             throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
         }
     }
 
     /// Finishes the open merge. A nil summary keeps the message git prepared.
-    func commitMerge(at repoURL: URL, summary: String?, description: String?) async throws {
+    func commitMerge(
+        at repoURL: URL,
+        summary: String?,
+        description: String?,
+        operation: MergeState.Operation = .merge
+    ) async throws {
         var arguments = ["commit"]
         if let summary, !summary.isEmpty {
             arguments += ["-m", summary]
             if let description, !description.isEmpty {
                 arguments += ["-m", description]
             }
+        } else if operation == .revert {
+            // `revert --continue` would open an editor; `true` is a no-op one.
+            arguments = ["-c", "core.editor=true", "revert", "--continue"]
         } else {
             arguments.append("--no-edit")
         }
 
         let result = try await run(arguments, in: repoURL)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+    }
+}
+
+// MARK: - Revert
+
+extension GitService {
+    /// A merge commit has two histories; git refuses to revert it without being
+    /// told which one to keep. Mainline 1 is the branch merged into, which is
+    /// what "undo this merge" means in practice.
+    static func revertArguments(hash: String, parentCount: Int) -> [String] {
+        var arguments = ["revert", "--no-edit"]
+        if parentCount > 1 { arguments += ["-m", "1"] }
+        return arguments + [hash]
+    }
+
+    /// Adds a commit that undoes `hash`. History is not rewritten, so this is
+    /// safe on pushed commits. On conflicts git exits non-zero and leaves the
+    /// revert open (REVERT_HEAD) for the merge banner to pick up.
+    func revert(at repoURL: URL, hash: String) async throws {
+        let parents = try await run(["rev-list", "--parents", "-n", "1", hash], in: repoURL)
+        guard parents.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: parents.terminationStatus, message: parents.standardError)
+        }
+        // "<hash> <parent> <parent>..."
+        let parentCount = max(0, parents.standardOutput.split(whereSeparator: \.isWhitespace).count - 1)
+
+        let result = try await run(Self.revertArguments(hash: hash, parentCount: parentCount), in: repoURL)
         guard result.terminationStatus == 0 else {
             throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
         }

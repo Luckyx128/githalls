@@ -20,6 +20,10 @@ struct HistorySidebarView: View {
                     CommitRow(commit: commit, isUnpushed: viewModel.unpushedCommitHashes.contains(commit.hash))
                         .tag(commit.id)
                         .contextMenu {
+                            Button("Revert Commit") {
+                                Task { await viewModel.revertCommit(commit.hash) }
+                            }
+                            .disabled(viewModel.isRevertBlocked)
                             if viewModel.canRewriteHead, viewModel.headCommit?.hash == commit.hash {
                                 Button("Undo Commit") {
                                     Task { await viewModel.undoLastCommit() }
