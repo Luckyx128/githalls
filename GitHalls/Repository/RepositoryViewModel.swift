@@ -134,6 +134,15 @@ final class RepositoryViewModel {
     var syncBehind = 0
     var hasUpstream = false
     var isFetching = false
+
+    /// When the last fetch succeeded, manual or automatic.
+    var lastFetchDate: Date?
+
+    /// Why the last background fetch failed, for a tooltip. Never an alert: a
+    /// laptop on a train should not nag every five minutes.
+    var lastFetchError: String?
+
+    private var autoFetchTask: Task<Void, Never>?
     var isPulling = false
     var isPushing = false
 
@@ -442,6 +451,9 @@ final class RepositoryViewModel {
         clearGraphState()
         RecentRepositoriesStore.addOrPromote(url)
         recentRepositoryURLs = RecentRepositoriesStore.load()
+        lastFetchDate = nil
+        lastFetchError = nil
+        startAutoFetch()
         Task { await refreshStatus() }
     }
 
@@ -451,7 +463,11 @@ final class RepositoryViewModel {
     }
     
     func closeRepository() {
+        autoFetchTask?.cancel()
+        autoFetchTask = nil
         repositoryURL = nil
+        lastFetchDate = nil
+        lastFetchError = nil
         readme = []
         readmeFileName = nil
         readmeKey = nil
@@ -785,11 +801,72 @@ final class RepositoryViewModel {
         defer { isFetching = false }
         do {
             try await gitService.fetch(at: repositoryURL)
+            lastFetchDate = .now
+            lastFetchError = nil
             await refreshStatus()
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    // MARK: - Auto-fetch
+
+    private var isAutoFetchEnabled: Bool {
+        UserDefaults.standard.object(forKey: AutoFetch.enabledKey) as? Bool ?? true
+    }
+
+    /// One loop per open repository; opening another (or closing) cancels it.
+    private func startAutoFetch() {
+        autoFetchTask?.cancel()
+        let url = repositoryURL
+        autoFetchTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: AutoFetch.interval)
+                guard !Task.isCancelled, let self, self.repositoryURL == url else { return }
+                await self.backgroundFetch(minimumAge: 0)
+            }
+        }
+    }
+
+    /// A fetch the user did not ask for. `GIT_TERMINAL_PROMPT=0` (set in
+    /// `GitService.run`) keeps git from waiting on a password, and every
+    /// failure is swallowed into `lastFetchError`.
+    ///
+    /// Skipped while anything that writes to the repository is running: a
+    /// fetch only touches remote refs, but the refresh after it would race
+    /// with a half-finished commit, merge or pull.
+    func backgroundFetch(minimumAge: TimeInterval) async {
+        guard isAutoFetchEnabled, let repositoryURL else { return }
+        guard !isFetching, !isPulling, !isPushing, !isCommitting, !isMerging,
+              !isReverting, !isFinalizingMerge, mergeState == nil else { return }
+        guard AutoFetch.isDue(lastFetch: lastFetchDate, minimumAge: minimumAge) else { return }
+        guard await gitService.hasRemote(at: repositoryURL) else { return }
+
+        isFetching = true
+        defer { isFetching = false }
+
+        let before = await gitService.remoteRefsSnapshot(at: repositoryURL)
+        do {
+            try await gitService.fetch(at: repositoryURL)
+        } catch {
+            if self.repositoryURL == repositoryURL { lastFetchError = error.localizedDescription }
+            return
+        }
+        guard self.repositoryURL == repositoryURL else { return }
+        lastFetchDate = .now
+        lastFetchError = nil
+
+        // refreshStatus clears errorMessage on success; a failure the user has
+        // not dismissed yet must outlive a background refresh.
+        let pendingError = errorMessage
+        await refreshStatus()
+        unpushedCommitHashes = await gitService.unpushedCommitHashes(at: repositoryURL)
+        if await gitService.remoteRefsSnapshot(at: repositoryURL) != before {
+            await loadGraph()
+            await loadCommits()
+        }
+        if let pendingError { errorMessage = pendingError }
     }
 
     // MARK: - Revert

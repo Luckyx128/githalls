@@ -742,6 +742,20 @@ extension GitService {
         }
     }
 
+    /// Every remote-tracking ref and where it points. Comparing two snapshots
+    /// says whether a fetch moved anything, i.e. whether the graph is stale.
+    func remoteRefsSnapshot(at repoURL: URL) async -> String? {
+        guard let result = try? await run(["for-each-ref", "--format=%(refname) %(objectname)", "refs/remotes"], in: repoURL),
+              result.terminationStatus == 0 else { return nil }
+        return result.standardOutput
+    }
+
+    /// Whether the repository has any remote to fetch from.
+    func hasRemote(at repoURL: URL) async -> Bool {
+        guard let result = try? await run(["remote"], in: repoURL), result.terminationStatus == 0 else { return false }
+        return !result.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     func pull(at repoURL: URL) async throws {
         let result = try await run(Self.credentialHelperOverride + ["pull"], in: repoURL)
         guard result.terminationStatus == 0 else {

@@ -33,6 +33,8 @@ struct GitHallsApp: App {
         }
         Settings {
             TabView {
+                GeneralSettingsView()
+                    .tabItem { Label("General", systemImage: "gearshape") }
                 GitIdentitiesSettingsView()
                     .tabItem { Label("Git Identities", systemImage: "person.2") }
                 JiraSettingsView()

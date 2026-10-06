@@ -31,6 +31,15 @@ struct SyncButton: View {
             .frame(minWidth: 96, alignment: .leading)
         }
         .disabled(isLoading || !isActionable)
+        .help(helpText)
+    }
+
+    private var helpText: String {
+        var text = AutoFetch.ageLabel(lastFetch: viewModel.lastFetchDate)
+        if let error = viewModel.lastFetchError {
+            text += "\nLast automatic fetch failed: \(error)"
+        }
+        return text
     }
 
     private var isLoading: Bool {

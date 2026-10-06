@@ -70,7 +70,7 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             Task {
-                await viewModel.fetch()
+                await viewModel.backgroundFetch(minimumAge: AutoFetch.activationMinimumAge)
                 if viewModel.selectedChangeID != nil {
                     await viewModel.loadDiff()
                 }
