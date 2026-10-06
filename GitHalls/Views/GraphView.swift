@@ -69,21 +69,25 @@ struct GraphView: View {
             } message: {
                 Text(viewModel.errorMessage ?? "")
             }
+            // `presenting:` hands the branch to the button. The dialog flips its
+            // binding to false *before* running the action, which clears the
+            // pending name — reading it back from the view model would find nil.
             .confirmationDialog(
                 "Delete \"\(viewModel.pendingRemoteBranchDeletion ?? "")\" on the remote?",
                 isPresented: Binding(
                     get: { viewModel.pendingRemoteBranchDeletion != nil },
                     set: { if !$0 { viewModel.cancelRemoteBranchDeletion() } }
                 ),
-                titleVisibility: .visible
-            ) {
+                titleVisibility: .visible,
+                presenting: viewModel.pendingRemoteBranchDeletion
+            ) { remoteBranch in
                 Button("Delete on Remote", role: .destructive) {
-                    Task { await viewModel.confirmRemoteBranchDeletion() }
+                    Task { await viewModel.deleteRemoteBranch(remoteBranch) }
                 }
                 Button("Cancel", role: .cancel) {
                     viewModel.cancelRemoteBranchDeletion()
                 }
-            } message: {
+            } message: { _ in
                 Text("This cannot be undone, and it affects everyone else working on that branch.")
             }
     }

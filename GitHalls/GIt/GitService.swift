@@ -597,6 +597,16 @@ extension GitService {
             Self.credentialHelperOverride + ["push", remote, "--delete", name],
             in: repoURL
         )
+        // Someone already deleted it on the server and our tracking ref is just
+        // stale. What the user asked for is true, so drop the leftover ref
+        // instead of reporting a failure they can do nothing about.
+        if result.terminationStatus != 0, BranchDeleteDiagnostics.isMissingOnRemote(result.standardError) {
+            let prune = try await run(["branch", "-r", "-d", "\(remote)/\(name)"], in: repoURL)
+            guard prune.terminationStatus == 0 else {
+                throw GitError.commandFailed(exitCode: prune.terminationStatus, message: prune.standardError)
+            }
+            return
+        }
         guard result.terminationStatus == 0 else {
             throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
         }

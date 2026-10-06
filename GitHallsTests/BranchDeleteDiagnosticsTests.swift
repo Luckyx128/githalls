@@ -29,4 +29,13 @@ struct BranchDeleteDiagnosticsTests {
         #expect(BranchDeleteDiagnostics.isUnmerged("error: Cannot delete branch 'main' checked out at '/tmp/repo'") == false)
         #expect(BranchDeleteDiagnostics.isUnmerged("") == false)
     }
+
+    @Test func remoteBranchAlreadyGone() {
+        let message = """
+        error: unable to delete 'feature': remote ref does not exist
+        error: failed to push some refs to 'https://github.com/org/repo.git'
+        """
+        #expect(BranchDeleteDiagnostics.isMissingOnRemote(message))
+        #expect(BranchDeleteDiagnostics.isMissingOnRemote("error: failed to push some refs") == false)
+    }
 }

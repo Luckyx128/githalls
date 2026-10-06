@@ -497,8 +497,8 @@ final class RepositoryViewModel {
         pendingRemoteBranchDeletion = nil
     }
 
-    func confirmRemoteBranchDeletion() async {
-        guard let repositoryURL, let remoteBranch = pendingRemoteBranchDeletion else { return }
+    func deleteRemoteBranch(_ remoteBranch: String) async {
+        guard let repositoryURL else { return }
         pendingRemoteBranchDeletion = nil
         // "origin/feature" names the remote and the branch on it.
         let remote = remoteBranch.contains("/")
