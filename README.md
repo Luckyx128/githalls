@@ -62,6 +62,13 @@ or from the command line:
 xcodebuild -project GitHalls.xcodeproj -scheme GitHalls -configuration Release build
 ```
 
+To build a Release and install it into `/Applications` (quits the running
+app first, then reopens it; pass `--no-open` to skip that):
+
+```bash
+scripts/install.sh
+```
+
 Run the test suite (parsers and the Jira branch-name helper are covered
 with `Swift Testing`):
 
