@@ -19,6 +19,14 @@ struct HistorySidebarView: View {
                 List(viewModel.commits, selection: $viewModel.selectedCommitID) { commit in
                     CommitRow(commit: commit, isUnpushed: viewModel.unpushedCommitHashes.contains(commit.hash))
                         .tag(commit.id)
+                        .contextMenu {
+                            if viewModel.canRewriteHead, viewModel.headCommit?.hash == commit.hash {
+                                Button("Undo Commit") {
+                                    Task { await viewModel.undoLastCommit() }
+                                }
+                                .disabled(viewModel.isCommitting)
+                            }
+                        }
                 }
                 .listStyle(.sidebar)
             }

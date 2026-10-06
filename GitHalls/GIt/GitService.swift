@@ -147,6 +147,14 @@ extension GitService {
         }
     }
 
+    /// Takes HEAD off the branch but keeps its changes staged, so nothing is lost.
+    func undoLastCommit(at repoURL: URL) async throws {
+        let result = try await run(["reset", "--soft", "HEAD~1"], in: repoURL)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+    }
+
     /// HEAD as undo and amend need it. Nil on a branch with no commits yet.
     func headCommit(at repoURL: URL) async -> HeadCommit? {
         guard let result = try? await run(["log", "-1", "--pretty=format:%H%x1f%P%x1f%s"], in: repoURL),

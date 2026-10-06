@@ -75,6 +75,10 @@ struct CommitView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
+            if viewModel.canRewriteHead, let head = viewModel.headCommit {
+                undoBanner(head)
+            }
+
             Button {
                 showIdentitySwitcher = true
             } label: {
@@ -160,6 +164,27 @@ struct CommitView: View {
             .disabled(viewModel.commitSummary.isEmpty || !canCommit || viewModel.isCommitting || viewModel.isStaging)
         }
         .padding(8)
+    }
+
+    /// The last commit, with a way back while it is still only local.
+    private func undoBanner(_ head: HeadCommit) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "checkmark.circle")
+                .foregroundStyle(.secondary)
+            Text(head.summary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer()
+            Button("Undo") {
+                Task { await viewModel.undoLastCommit() }
+            }
+            .buttonStyle(.borderless)
+            .disabled(viewModel.isCommitting)
+            .help("Undo the last commit and keep its changes staged")
+        }
+        .font(.caption)
+        .padding(6)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
     }
 
     @ViewBuilder

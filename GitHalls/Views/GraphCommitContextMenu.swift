@@ -50,6 +50,15 @@ struct GraphCommitContextMenu: View {
             Task { await viewModel.copyCommitMessage(commit.hash) }
         }
 
+        if viewModel.canRewriteHead, viewModel.headCommit?.hash == commit.hash {
+            Divider()
+
+            Button("Undo Commit") {
+                Task { await viewModel.undoLastCommit() }
+            }
+            .disabled(viewModel.isCommitting)
+        }
+
         Divider()
 
         Button("Checkout Commit (Detached)") {

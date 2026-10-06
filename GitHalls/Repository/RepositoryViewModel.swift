@@ -346,6 +346,30 @@ final class RepositoryViewModel {
         }
     }
 
+    /// `git reset --soft HEAD~1`, then the message goes back in the form, as in
+    /// GitHub Desktop: the changes stay staged and nothing needs retyping.
+    func undoLastCommit() async {
+        guard let repositoryURL, canRewriteHead, let head = headCommit, !isCommitting else { return }
+
+        isCommitting = true
+        defer { isCommitting = false }
+        do {
+            let message = try await gitService.commitMessage(at: repositoryURL, hash: head.hash)
+            try await gitService.undoLastCommit(at: repositoryURL)
+            let parts = CommitMessageComposer.split(message)
+            commitSummary = parts.summary
+            commitDescription = parts.description
+            commitCoAuthors = parts.coAuthors
+            isAmending = false
+            await refreshStatus()
+            await loadCommits()
+            await loadGraph()
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     /// Adds `Name <email>`; false when the text is not in that form.
     @discardableResult
     func addCoAuthor(_ text: String) -> Bool {
