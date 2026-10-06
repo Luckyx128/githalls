@@ -14,7 +14,7 @@ enum CommitLogParser {
     static func parse(_ raw: String) -> [Commit] {
         raw.split(separator: recordSeparator, omittingEmptySubsequences: true).compactMap { record in
             let fields = record.split(separator: fieldSeparator, omittingEmptySubsequences: false)
-            guard fields.count == 5 else { return nil }
+            guard fields.count == 6 else { return nil }
             let trimmed = fields.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             guard let date = ISO8601DateFormatter().date(from: trimmed[3]) else { return nil }
             return Commit(
@@ -22,7 +22,8 @@ enum CommitLogParser {
                 shortHash: trimmed[1],
                 authorName: trimmed[2],
                 date: date,
-                summary: trimmed[4]
+                summary: trimmed[5],
+                coAuthors: CoAuthorTrailerParser.parse(fields[4])
             )
         }
     }

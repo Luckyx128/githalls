@@ -47,7 +47,8 @@ struct CommitRow: View {
                 .lineLimit(1)
 
             HStack(spacing: 4) {
-                Text(commit.authorName)
+                Text(commit.compactAuthorsLabel)
+                    .help(commit.coAuthors.isEmpty ? "" : commit.allAuthorsLabel)
                 Text("·")
                 Text(Self.relativeFormatter.localizedString(for: commit.date, relativeTo: Date()))
                 Spacer()

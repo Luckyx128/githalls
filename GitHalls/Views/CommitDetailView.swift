@@ -44,7 +44,7 @@ struct CommitDetailHeader: View {
                 .textSelection(.enabled)
 
             HStack(spacing: 8) {
-                Text(commit.authorName)
+                Text(commit.allAuthorsLabel)
                 Text("·")
                 Text(commit.date.formatted(date: .abbreviated, time: .shortened))
                 Text("·")

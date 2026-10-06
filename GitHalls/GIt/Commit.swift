@@ -14,7 +14,37 @@ struct Commit: Identifiable, Hashable {
     let date: Date
     let summary: String
 
+    /// Names from the `Co-authored-by:` trailers, in message order.
+    var coAuthors: [String] = []
+
     var id: String { hash }
+
+    /// Every name on the commit: "Ana", "Ana and Bruno", "Ana, Bruno and Caio".
+    var allAuthorsLabel: String {
+        ListFormatter.localizedString(byJoining: [authorName] + coAuthors)
+    }
+
+    /// The row-sized version: the author plus a count of the rest.
+    var compactAuthorsLabel: String {
+        coAuthors.isEmpty ? authorName : "\(authorName) +\(coAuthors.count)"
+    }
+}
+
+enum CoAuthorTrailerParser {
+    /// Group separator: what the log formats ask git to put between trailers.
+    static let separator: Character = "\u{1D}"
+
+    /// `Ana <ana@x.com>` → `Ana`. Duplicates go: a trailer pasted twice is
+    /// still one person.
+    static func parse(_ raw: Substring) -> [String] {
+        var seen = Set<String>()
+        return raw.split(separator: separator).compactMap { value in
+            let name = value.split(separator: "<", maxSplits: 1).first
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) } ?? ""
+            guard !name.isEmpty, seen.insert(name.lowercased()).inserted else { return nil }
+            return name
+        }
+    }
 }
 
 struct CommitDetail {

@@ -79,9 +79,10 @@ struct GraphRowView: View {
 
             Spacer(minLength: 8)
 
-            Text(row.commit.authorName)
+            Text(row.commit.compactAuthorsLabel)
                 .lineLimit(1)
                 .frame(width: 120, alignment: .trailing)
+                .help(row.commit.coAuthors.isEmpty ? "" : row.commit.allAuthorsLabel)
 
             Text(Self.dateFormatter.string(from: row.commit.date))
                 .frame(width: 80, alignment: .trailing)

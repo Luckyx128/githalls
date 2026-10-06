@@ -34,6 +34,9 @@ struct GraphCommit: Identifiable, Hashable {
     var shortHash: String { commit.shortHash }
     var summary: String { commit.summary }
     var authorName: String { commit.authorName }
+    var coAuthors: [String] { commit.coAuthors }
+    var allAuthorsLabel: String { commit.allAuthorsLabel }
+    var compactAuthorsLabel: String { commit.compactAuthorsLabel }
     var date: Date { commit.date }
 
     var isMerge: Bool { parents.count > 1 }

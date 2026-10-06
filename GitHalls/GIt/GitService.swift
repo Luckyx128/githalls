@@ -320,8 +320,11 @@ extension GitService {
         return CommitLogParser.parse(result.standardOutput)
     }
 
-    /// hash, short hash, author, author date, subject.
-    private static let logFormat = "%H%x1f%h%x1f%an%x1f%aI%x1f%s%x1e"
+    /// `Co-authored-by` values, one per trailer, split by `%x1d`.
+    fileprivate static let coAuthorsFormat = "%(trailers:key=Co-authored-by,valueonly,separator=%x1d)"
+
+    /// hash, short hash, author, author date, co-authors, subject.
+    private static let logFormat = "%H%x1f%h%x1f%an%x1f%aI%x1f\(coAuthorsFormat)%x1f%s%x1e"
 }
 
 extension GitService {
@@ -390,8 +393,8 @@ extension GitService {
 
 extension GitService {
     /// hash, short hash, parents, author, author date, committer date,
-    /// decoration, subject.
-    private static let graphLogFormat = "%H%x1f%h%x1f%P%x1f%an%x1f%aI%x1f%cI%x1f%D%x1f%s%x1e"
+    /// decoration, co-authors, subject.
+    private static let graphLogFormat = "%H%x1f%h%x1f%P%x1f%an%x1f%aI%x1f%cI%x1f%D%x1f\(coAuthorsFormat)%x1f%s%x1e"
 
     /// The whole repository, not just the branch that happens to be checked out.
     ///

@@ -7,7 +7,7 @@
 
 import Foundation
 
-/// Parses the eight-field records `GitService.graphLog` asks git for.
+/// Parses the nine-field records `GitService.graphLog` asks git for.
 ///
 /// Same separators as `CommitLogParser`, and one difference that matters:
 /// `omittingEmptySubsequences: false`. A root commit has an empty `%P` and most
@@ -17,7 +17,7 @@ import Foundation
 enum CommitGraphParser {
     private static let fieldSeparator: Character = "\u{1F}"   // unit separator
     private static let recordSeparator: Character = "\u{1E}"  // record separator
-    private static let fieldCount = 8
+    private static let fieldCount = 9
 
     static func parse(_ raw: String) -> [GraphCommit] {
         // One formatter for the whole log. At a thousand commits, allocating one
@@ -38,7 +38,8 @@ enum CommitGraphParser {
                     shortHash: trimmed[1],
                     authorName: trimmed[3],
                     date: authorDate,
-                    summary: trimmed[7]
+                    summary: trimmed[8],
+                    coAuthors: CoAuthorTrailerParser.parse(fields[7])
                 ),
                 parents: trimmed[2].split(separator: " ").map(String.init),
                 refs: GitRefParser.parse(trimmed[6]),

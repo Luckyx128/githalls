@@ -14,7 +14,7 @@ struct CommitGraphParserTests {
     private static let unit = "\u{1F}"
     private static let record = "\u{1E}"
 
-    /// hash, shortHash, parents, author, authorDate, committerDate, refs, subject
+    /// hash, shortHash, parents, author, authorDate, committerDate, refs, co-authors, subject
     private static func raw(
         _ hash: String,
         _ shortHash: String,
@@ -23,9 +23,10 @@ struct CommitGraphParserTests {
         _ authorDate: String,
         _ committerDate: String,
         _ refs: String,
-        _ subject: String
+        _ subject: String,
+        coAuthors: String = ""
     ) -> String {
-        [hash, shortHash, parents, author, authorDate, committerDate, refs, subject]
+        [hash, shortHash, parents, author, authorDate, committerDate, refs, coAuthors, subject]
             .joined(separator: unit) + record + "\n"
     }
 

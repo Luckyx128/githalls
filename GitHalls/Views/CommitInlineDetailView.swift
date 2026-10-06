@@ -92,7 +92,7 @@ struct CommitInlineDetailView: View {
                     .textSelection(.enabled)
 
                 HStack(spacing: 8) {
-                    Text(detail.commit.authorName)
+                    Text(detail.commit.allAuthorsLabel)
                     Text("·")
                     Text(detail.commit.date.formatted(date: .abbreviated, time: .shortened))
                     Text("·")
