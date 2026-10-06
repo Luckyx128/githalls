@@ -834,7 +834,7 @@ final class RepositoryViewModel {
     func open(_ change: FileChange, in editor: ExternalEditor) {
         guard let repositoryURL else { return }
 
-        ExternalEditors.open(repositoryURL.appending(path: change.path), with: editor)
+        ExternalEditors.open([repositoryURL.appending(path: change.path)], in: repositoryURL, with: editor)
     }
 
     /// Hands the whole conflict list to the editor at once — resolving them one
@@ -842,9 +842,8 @@ final class RepositoryViewModel {
     func openAllConflicts(in editor: ExternalEditor) {
         guard let repositoryURL else { return }
 
-        for change in conflictedChanges {
-            ExternalEditors.open(repositoryURL.appending(path: change.path), with: editor)
-        }
+        let files = conflictedChanges.map { repositoryURL.appending(path: $0.path) }
+        ExternalEditors.open(files, in: repositoryURL, with: editor)
     }
 
     /// Stages every conflict that no longer has markers in it. Files still
