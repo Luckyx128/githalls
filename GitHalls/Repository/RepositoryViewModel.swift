@@ -61,7 +61,17 @@ final class RepositoryViewModel {
     /// People from the repository's history, offered as co-author suggestions.
     var knownAuthors: [CoAuthor] = []
 
+    /// The next commit rewrites HEAD instead of adding one.
+    var isAmending = false
+
+    var headCommit: HeadCommit?
     private var knownAuthorsRequestToken = UUID()
+
+    /// Undo and amend rewrite history, so they apply only to a local, ordinary
+    /// commit, and never while a merge is waiting to be finished.
+    var canRewriteHead: Bool {
+        (headCommit?.isRewritable ?? false) && mergeState == nil
+    }
     
     var recentRepositoryURLs: [URL] = RecentRepositoriesStore.load()
     
@@ -218,8 +228,11 @@ final class RepositoryViewModel {
             let identity = try? await gitService.identity(at: repositoryURL)
             let hasLocal = (try? await gitService.hasLocalIdentity(at: repositoryURL)) ?? false
             let merge = try? await gitService.mergeState(at: repositoryURL)
+            let head = await gitService.headCommit(at: repositoryURL)
             guard statusRequestToken == token else { return }
             mergeState = merge
+            headCommit = head
+            if head == nil || !(head!.isRewritable) { isAmending = false }
             changes = newChanges
             currentBranch = branch
             await loadReadmeIfNeeded(at: repositoryURL, branch: branch)
@@ -284,6 +297,7 @@ final class RepositoryViewModel {
 
     func commit() async {
         guard let repositoryURL, !commitSummary.isEmpty else { return }
+        let amend = isAmending && canRewriteHead
 
         isCommitting = true
         defer { isCommitting = false}
@@ -293,15 +307,41 @@ final class RepositoryViewModel {
                 description: commitDescription,
                 coAuthors: commitCoAuthors
             )
-            try await gitService.commit(at: repositoryURL, summary: message.summary, description: message.body)
+            try await gitService.commit(at: repositoryURL, summary: message.summary, description: message.body, amend: amend)
             commitSummary = ""
             commitDescription = ""
             commitCoAuthors = []
+            isAmending = false
             selectedChangeID = nil
             currentDiff = nil
             await refreshStatus()
+            await loadCommits()
+            await loadGraph()
             errorMessage = nil
         } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Turning amend on loads HEAD's message into empty fields, so the common
+    /// "fix the wording" case needs no retyping; fields already typed are kept.
+    func setAmending(_ enabled: Bool) async {
+        guard let repositoryURL else { return }
+        guard enabled else {
+            isAmending = false
+            return
+        }
+        guard canRewriteHead, let head = headCommit else { return }
+        isAmending = true
+        guard commitSummary.isEmpty, commitDescription.isEmpty, commitCoAuthors.isEmpty else { return }
+        do {
+            let parts = CommitMessageComposer.split(try await gitService.commitMessage(at: repositoryURL, hash: head.hash))
+            guard isAmending, commitSummary.isEmpty else { return }
+            commitSummary = parts.summary
+            commitDescription = parts.description
+            commitCoAuthors = parts.coAuthors
+        } catch {
+            isAmending = false
             errorMessage = error.localizedDescription
         }
     }
@@ -398,6 +438,8 @@ final class RepositoryViewModel {
         commitDescription = ""
         commitCoAuthors = []
         knownAuthors = []
+        isAmending = false
+        headCommit = nil
         errorMessage = nil
         commits = []
         selectedCommitID = nil

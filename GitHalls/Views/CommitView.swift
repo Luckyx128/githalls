@@ -34,7 +34,7 @@ struct CommitView: View {
     /// A merge waiting to be committed has nothing staged to show — git already
     /// holds the result — so the staged-files rule cannot be the only gate.
     private var canCommit: Bool {
-        hasStagedChanges || viewModel.isMergeReadyToCommit
+        hasStagedChanges || viewModel.isMergeReadyToCommit || viewModel.isAmending
     }
 
     /// Known people not yet credited, for the "+ Co-author" menu.
@@ -65,6 +65,7 @@ struct CommitView: View {
         if viewModel.isCommitting {
             return "Committing…"
         }
+        if viewModel.isAmending { return "Amend" }
         let verb = viewModel.isMergeReadyToCommit ? "Commit merge" : "Commit"
         if let branch = viewModel.currentBranch, !branch.isEmpty {
             return "\(verb) to \(branch)"
@@ -130,6 +131,16 @@ struct CommitView: View {
                 .textFieldStyle(.roundedBorder)
 
             coAuthorSection
+
+            if viewModel.canRewriteHead {
+                Toggle("Amend last commit", isOn: Binding(
+                    get: { viewModel.isAmending },
+                    set: { enabled in Task { await viewModel.setAmending(enabled) } }
+                ))
+                .toggleStyle(.checkbox)
+                .font(.caption)
+                .help("Rewrite the last commit instead of adding a new one")
+            }
 
             Button {
                 Task { await viewModel.commit() }

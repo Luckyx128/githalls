@@ -132,17 +132,43 @@ extension GitService {
         }
     }
     
-    func commit(at repoURL: URL, summary: String, description: String?) async throws {
-            var arguments = ["commit", "-m", summary]
-            if let description, !description.isEmpty {
-                arguments += ["-m", description]
-            }
-            let result = try await run(arguments, in: repoURL)
-            guard result.terminationStatus == 0 else {
-                throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
-            }
+    /// `amend` rewrites HEAD instead of adding a commit. It is allowed with
+    /// nothing staged: changing only the message is the common case.
+    func commit(at repoURL: URL, summary: String, description: String?, amend: Bool = false) async throws {
+        var arguments = ["commit"]
+        if amend { arguments.append("--amend") }
+        arguments += ["-m", summary]
+        if let description, !description.isEmpty {
+            arguments += ["-m", description]
         }
-    
+        let result = try await run(arguments, in: repoURL)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
+    }
+
+    /// HEAD as undo and amend need it. Nil on a branch with no commits yet.
+    func headCommit(at repoURL: URL) async -> HeadCommit? {
+        guard let result = try? await run(["log", "-1", "--pretty=format:%H%x1f%P%x1f%s"], in: repoURL),
+              result.terminationStatus == 0
+        else { return nil }
+        let fields = result.standardOutput.split(separator: "\u{1F}", maxSplits: 2, omittingEmptySubsequences: false)
+        guard fields.count == 3, !fields[0].isEmpty else { return nil }
+
+        // Published means some remote-tracking ref already holds it. That also
+        // covers a repo with no remote: nothing holds it, so it is all local.
+        let containing = try? await run(["branch", "-r", "--contains", "HEAD"], in: repoURL)
+        let isPublished = containing?.terminationStatus == 0
+            && !containing!.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+        return HeadCommit(
+            hash: String(fields[0]),
+            parentCount: fields[1].split(separator: " ").count,
+            summary: String(fields[2]),
+            isPublished: isPublished
+        )
+    }
+
     /// People from the last commits, to offer as co-authors.
     func recentAuthors(at repoURL: URL, limit: Int = 500) async -> [CoAuthor] {
         guard let result = try? await run(["log", "-n", "\(limit)", "--format=%an <%ae>"], in: repoURL),
@@ -897,4 +923,16 @@ extension GitService {
             throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
         }
     }
+}
+
+/// What undo and amend need to know about HEAD.
+struct HeadCommit: Equatable {
+    let hash: String
+    let parentCount: Int
+    let summary: String
+    let isPublished: Bool
+
+    /// Rewriting a pushed commit forces everyone who has it to reconcile, a merge
+    /// has no single parent to go back to, and a root has none at all.
+    var isRewritable: Bool { !isPublished && parentCount == 1 }
 }
