@@ -143,6 +143,14 @@ extension GitService {
             }
         }
     
+    /// People from the last commits, to offer as co-authors.
+    func recentAuthors(at repoURL: URL, limit: Int = 500) async -> [CoAuthor] {
+        guard let result = try? await run(["log", "-n", "\(limit)", "--format=%an <%ae>"], in: repoURL),
+              result.terminationStatus == 0
+        else { return [] }
+        return CommitMessageComposer.uniqueAuthors(result.standardOutput.split(whereSeparator: \.isNewline).map(String.init))
+    }
+
     func status(at repoURL: URL) async throws -> [FileChange] {
         let result = try await run(["status", "--porcelain=v1", "--untracked-files=all"], in: repoURL)
         guard result.terminationStatus == 0 else {

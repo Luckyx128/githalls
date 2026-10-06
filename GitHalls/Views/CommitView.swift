@@ -14,6 +14,9 @@ struct CommitView: View {
     @State private var scope: String = ""
     @State private var showTypeReference = false
     @State private var showIdentitySwitcher = false
+    @State private var coAuthorText = ""
+    @State private var showCoAuthorField = false
+    @State private var coAuthorInvalid = false
 
     private var identityLabel: String {
         guard let identity = viewModel.currentIdentity else { return "Set identity" }
@@ -32,6 +35,30 @@ struct CommitView: View {
     /// holds the result — so the staged-files rule cannot be the only gate.
     private var canCommit: Bool {
         hasStagedChanges || viewModel.isMergeReadyToCommit
+    }
+
+    /// Known people not yet credited, for the "+ Co-author" menu.
+    private var suggestions: [CoAuthor] {
+        let mine = viewModel.currentIdentity?.email.lowercased()
+        return viewModel.knownAuthors
+            .filter { !viewModel.commitCoAuthors.contains($0) && $0.email.lowercased() != mine }
+            .prefix(30)
+            .map { $0 }
+    }
+
+    private func submitCoAuthor() {
+        let text = coAuthorText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else {
+            showCoAuthorField = false
+            return
+        }
+        if viewModel.addCoAuthor(text) {
+            coAuthorText = ""
+            coAuthorInvalid = false
+            showCoAuthorField = false
+        } else {
+            coAuthorInvalid = true
+        }
     }
 
     private var commitButtonTitle: String {
@@ -102,6 +129,8 @@ struct CommitView: View {
                 .lineLimit(3...6)
                 .textFieldStyle(.roundedBorder)
 
+            coAuthorSection
+
             Button {
                 Task { await viewModel.commit() }
             } label: {
@@ -120,6 +149,59 @@ struct CommitView: View {
             .disabled(viewModel.commitSummary.isEmpty || !canCommit || viewModel.isCommitting || viewModel.isStaging)
         }
         .padding(8)
+    }
+
+    @ViewBuilder
+    private var coAuthorSection: some View {
+        ForEach(viewModel.commitCoAuthors) { author in
+            HStack(spacing: 4) {
+                Image(systemName: "person.2")
+                Text(author.display)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer()
+                Button {
+                    viewModel.removeCoAuthor(author)
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                }
+                .buttonStyle(.borderless)
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+
+        if showCoAuthorField {
+            VStack(alignment: .leading, spacing: 2) {
+                TextField("Name <email>", text: $coAuthorText)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit { submitCoAuthor() }
+                    .onChange(of: coAuthorText) { coAuthorInvalid = false }
+                if coAuthorInvalid {
+                    Text("Use the form Name <email>")
+                        .font(.caption2)
+                        .foregroundStyle(.red)
+                }
+            }
+        }
+
+        HStack(spacing: 8) {
+            Menu {
+                ForEach(suggestions) { author in
+                    Button(author.display) { viewModel.addCoAuthor(author.display) }
+                }
+                if !suggestions.isEmpty { Divider() }
+                Button("Other…") { showCoAuthorField = true }
+            } label: {
+                Label("Co-author", systemImage: "plus")
+                    .font(.caption)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+        }
+        .task(id: viewModel.repositoryURL) {
+            await viewModel.loadKnownAuthors()
+        }
     }
 
     private func applyPrefix() {

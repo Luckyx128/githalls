@@ -54,6 +54,14 @@ final class RepositoryViewModel {
     var commitSummary: String = ""
     var commitDescription: String = ""
     var isCommitting: Bool = false
+
+    /// People credited with `Co-authored-by:` on the next commit.
+    var commitCoAuthors: [CoAuthor] = []
+
+    /// People from the repository's history, offered as co-author suggestions.
+    var knownAuthors: [CoAuthor] = []
+
+    private var knownAuthorsRequestToken = UUID()
     
     var recentRepositoryURLs: [URL] = RecentRepositoriesStore.load()
     
@@ -276,13 +284,19 @@ final class RepositoryViewModel {
 
     func commit() async {
         guard let repositoryURL, !commitSummary.isEmpty else { return }
-        
+
         isCommitting = true
         defer { isCommitting = false}
         do {
-            try await gitService.commit(at: repositoryURL, summary: commitSummary, description: commitDescription.isEmpty ? nil : commitDescription)
+            let message = CommitMessageComposer.compose(
+                summary: commitSummary,
+                description: commitDescription,
+                coAuthors: commitCoAuthors
+            )
+            try await gitService.commit(at: repositoryURL, summary: message.summary, description: message.body)
             commitSummary = ""
             commitDescription = ""
+            commitCoAuthors = []
             selectedChangeID = nil
             currentDiff = nil
             await refreshStatus()
@@ -291,7 +305,28 @@ final class RepositoryViewModel {
             errorMessage = error.localizedDescription
         }
     }
-    
+
+    /// Adds `Name <email>`; false when the text is not in that form.
+    @discardableResult
+    func addCoAuthor(_ text: String) -> Bool {
+        guard let author = CoAuthor.parse(text) else { return false }
+        if !commitCoAuthors.contains(author) { commitCoAuthors.append(author) }
+        return true
+    }
+
+    func removeCoAuthor(_ author: CoAuthor) {
+        commitCoAuthors.removeAll { $0 == author }
+    }
+
+    func loadKnownAuthors() async {
+        guard let repositoryURL else { return }
+        let token = UUID()
+        knownAuthorsRequestToken = token
+        let authors = await gitService.recentAuthors(at: repositoryURL)
+        guard knownAuthorsRequestToken == token else { return }
+        knownAuthors = authors
+    }
+
     func toggleStage(for change: FileChange) async {
         guard let repositoryURL, !isStaging else { return }
         isStaging = true
@@ -361,6 +396,8 @@ final class RepositoryViewModel {
         currentBranch = nil
         commitSummary = ""
         commitDescription = ""
+        commitCoAuthors = []
+        knownAuthors = []
         errorMessage = nil
         commits = []
         selectedCommitID = nil
