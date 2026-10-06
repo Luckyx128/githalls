@@ -323,6 +323,24 @@ extension GitService {
     /// `Co-authored-by` values, one per trailer, split by `%x1d`.
     fileprivate static let coAuthorsFormat = "%(trailers:key=Co-authored-by,valueonly,separator=%x1d)"
 
+    /// Hashes reachable from a local branch but from no remote-tracking ref:
+    /// what a push would send.
+    ///
+    /// With no remote at all everything would qualify, and a marker on every
+    /// commit says nothing, so that case answers empty.
+    func unpushedCommitHashes(at repoURL: URL, limit: Int = 1000) async -> Set<String> {
+        guard let remotes = try? await run(["remote"], in: repoURL),
+              remotes.terminationStatus == 0,
+              !remotes.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let result = try? await run(
+                  ["rev-list", "--branches", "--not", "--remotes", "--max-count=\(limit)"],
+                  in: repoURL
+              ),
+              result.terminationStatus == 0
+        else { return [] }
+        return Set(result.standardOutput.split(whereSeparator: \.isNewline).map(String.init))
+    }
+
     /// hash, short hash, author, author date, co-authors, subject.
     private static let logFormat = "%H%x1f%h%x1f%an%x1f%aI%x1f\(coAuthorsFormat)%x1f%s%x1e"
 }

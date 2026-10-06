@@ -122,7 +122,8 @@ struct GraphView: View {
                     row: row,
                     laneCount: viewModel.graphLaneCount,
                     gutterWidth: gutterWidth,
-                    isHead: row.commit.hash == headHash
+                    isHead: row.commit.hash == headHash,
+                    isUnpushed: viewModel.unpushedCommitHashes.contains(row.commit.hash)
                 )
                 .tag(row.commit.hash)
                 // The lanes only join up if every row is exactly the same height

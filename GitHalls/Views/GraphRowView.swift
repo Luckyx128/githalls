@@ -56,6 +56,7 @@ struct GraphRowView: View {
     let laneCount: Int
     let gutterWidth: CGFloat
     let isHead: Bool
+    let isUnpushed: Bool
 
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -87,9 +88,16 @@ struct GraphRowView: View {
             Text(Self.dateFormatter.string(from: row.commit.date))
                 .frame(width: 80, alignment: .trailing)
 
-            Text(row.commit.shortHash)
-                .font(.system(.caption, design: .monospaced))
-                .frame(width: 64, alignment: .trailing)
+            HStack(spacing: 2) {
+                if isUnpushed {
+                    Image(systemName: "arrow.up.circle")
+                        .foregroundStyle(Color.accentColor)
+                        .help("Not pushed yet")
+                }
+                Text(row.commit.shortHash)
+                    .font(.system(.caption, design: .monospaced))
+            }
+            .frame(width: 64, alignment: .trailing)
         }
         .font(.caption)
         .foregroundStyle(.primary)

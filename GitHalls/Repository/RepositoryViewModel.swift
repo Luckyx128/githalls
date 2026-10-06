@@ -110,6 +110,9 @@ final class RepositoryViewModel {
     }
     
     var syncAhead = 0
+
+    /// Commits a push would send, for the marker beside their hash.
+    var unpushedCommitHashes: Set<String> = []
     var syncBehind = 0
     var hasUpstream = false
     var isFetching = false
@@ -215,6 +218,10 @@ final class RepositoryViewModel {
             currentIdentity = identity
             hasLocalIdentityOverride = hasLocal
             if let sync {
+                // A push or commit moves this count; the marker follows it.
+                if syncAhead != sync.ahead {
+                    unpushedCommitHashes = await gitService.unpushedCommitHashes(at: repositoryURL)
+                }
                 syncAhead = sync.ahead
                 syncBehind = sync.behind
                 hasUpstream = true
@@ -382,6 +389,7 @@ final class RepositoryViewModel {
         guard let repositoryURL else { return }
         do {
             commits = try await gitService.log(at: repositoryURL)
+            unpushedCommitHashes = await gitService.unpushedCommitHashes(at: repositoryURL)
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
@@ -406,6 +414,7 @@ final class RepositoryViewModel {
             // A branch switch or another refresh landed while this was loading.
             guard graphRequestToken == token else { return }
             graphRows = graph.rows
+            unpushedCommitHashes = await gitService.unpushedCommitHashes(at: repositoryURL)
             graphLaneCount = graph.laneCount
             errorMessage = nil
         } catch {

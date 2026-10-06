@@ -17,7 +17,7 @@ struct HistorySidebarView: View {
                 ContentUnavailableView("No Commits", systemImage: "clock")
             } else {
                 List(viewModel.commits, selection: $viewModel.selectedCommitID) { commit in
-                    CommitRow(commit: commit)
+                    CommitRow(commit: commit, isUnpushed: viewModel.unpushedCommitHashes.contains(commit.hash))
                         .tag(commit.id)
                 }
                 .listStyle(.sidebar)
@@ -34,6 +34,7 @@ struct HistorySidebarView: View {
 
 struct CommitRow: View {
     let commit: Commit
+    let isUnpushed: Bool
 
     private static let relativeFormatter: RelativeDateTimeFormatter = {
         let formatter = RelativeDateTimeFormatter()
@@ -52,6 +53,11 @@ struct CommitRow: View {
                 Text("·")
                 Text(Self.relativeFormatter.localizedString(for: commit.date, relativeTo: Date()))
                 Spacer()
+                if isUnpushed {
+                    Image(systemName: "arrow.up.circle")
+                        .foregroundStyle(Color.accentColor)
+                        .help("Not pushed yet")
+                }
                 Text(commit.shortHash)
                     .font(.system(.caption, design: .monospaced))
             }
