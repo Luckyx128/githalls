@@ -26,21 +26,21 @@ struct BranchSwitcherView: View {
                 if !viewModel.recentBranchNames.isEmpty {
                     Section("Recent") {
                         ForEach(viewModel.recentBranchNames, id: \.self) { name in
-                            branchRow(name: name, isCurrent: viewModel.currentBranch == name)
+                            branchRow(name: name, isCurrent: viewModel.currentBranch == name, creator: viewModel.branchCreatorLabels["local:" + name])
                         }
                     } 
                 }
 
                 Section("Local") {
                     ForEach(localBranches) { branch in
-                        branchRow(name: branch.name, isCurrent: branch.isCurrent)
+                        branchRow(name: branch.name, isCurrent: branch.isCurrent, creator: viewModel.branchCreatorLabels[branch.id])
                     }
                 }
 
                 if !remoteBranches.isEmpty {
                     Section("Remote") {
                        ForEach(remoteBranches) { branch in
-                           branchRow(name: branch.name, isCurrent: false, switchTo: Branch.remoteShortName(from: branch.name))
+                           branchRow(name: branch.name, isCurrent: false, switchTo: Branch.remoteShortName(from: branch.name), creator: viewModel.branchCreatorLabels[branch.id])
                        }
                    }
                 }
@@ -61,20 +61,28 @@ struct BranchSwitcherView: View {
             }
             .padding(8)
         }
-        .frame(width: 280)
+        .frame(width: 300)
         .task {
             await viewModel.loadBranches()
+            await viewModel.loadBranchCreators()
         }
     }
 
     @ViewBuilder
-    private func branchRow(name: String, isCurrent: Bool, switchTo: String? = nil) -> some View {
+    private func branchRow(name: String, isCurrent: Bool, switchTo: String? = nil, creator: String? = nil) -> some View {
         Button {
             Task { await viewModel.switchBranch(to: switchTo ?? name) }
         } label: {
             HStack {
                 Text(name)
                 Spacer()
+                if let creator {
+                    Text(creator)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .help(BranchCreator.tooltip(for: creator))
+                }
                 if isCurrent {
                     Image(systemName: "checkmark")
                         .foregroundStyle(.secondary)

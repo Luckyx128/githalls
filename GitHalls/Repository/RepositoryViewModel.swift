@@ -93,6 +93,12 @@ final class RepositoryViewModel {
     private var commitDetailRequestToken = UUID()
     
     var branches: [Branch] = []
+    /// Row label per `Branch.id` ("you" or a name); branches with no guess are absent.
+    var branchCreatorLabels: [String: String] = [:]
+    /// Keyed by tip + base hash, so reopening the popover costs no git runs and
+    /// a branch is only looked at again once it or the default branch moves.
+    /// An empty string records "looked, nobody to name".
+    private var creatorCache: [String: String] = [:]
     var isSwitchingBranch = false
 
     var graphRows: [GraphRow] = []
@@ -752,6 +758,40 @@ final class RepositoryViewModel {
         }
     }
     
+    /// Fills `branchCreatorLabels` after the list is already on screen; only
+    /// branches whose tip is not cached cost a `git log`.
+    func loadBranchCreators() async {
+        guard let repositoryURL else { return }
+        let listed = branches
+        async let tipsTask = gitService.branchTips(at: repositoryURL)
+        async let baseTask = gitService.creatorBase(at: repositoryURL)
+        async let identityTask = try? gitService.identity(at: repositoryURL)
+        let (tips, base, identity) = await (tipsTask, baseTask, identityTask)
+        guard let base else { return }
+        let currentUser = identity?.name
+
+        func key(_ ref: String) -> String? { tips[ref].map { "\($0)|\(base.hash)" } }
+
+        let missing = listed.map(BranchCreator.ref(for:)).filter { ref in
+            guard let key = key(ref) else { return false }
+            return creatorCache[key] == nil
+        }
+        if !missing.isEmpty {
+            let found = await gitService.branchCreators(at: repositoryURL, refs: missing, base: base.ref)
+            for ref in missing {
+                if let key = key(ref) { creatorCache[key] = found[ref] ?? "" }
+            }
+        }
+
+        var labels: [String: String] = [:]
+        for branch in listed {
+            guard let key = key(BranchCreator.ref(for: branch)),
+                  let creator = creatorCache[key], !creator.isEmpty else { continue }
+            labels[branch.id] = BranchCreator.label(for: creator, currentUser: currentUser)
+        }
+        branchCreatorLabels = labels
+    }
+
     func switchBranch(to name: String) async {
         guard let repositoryURL else { return }
         isSwitchingBranch = true

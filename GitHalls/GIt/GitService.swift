@@ -1003,3 +1003,56 @@ struct HeadCommit: Equatable {
     /// has no single parent to go back to, and a root has none at all.
     var isRewritable: Bool { !isPublished && parentCount == 1 }
 }
+
+extension GitService {
+    /// Tip hash of every local and remote branch, keyed by full ref name.
+    func branchTips(at repoURL: URL) async -> [String: String] {
+        guard let result = try? await run(
+            ["for-each-ref", "--format=%(objectname) %(refname)", "refs/heads", "refs/remotes"],
+            in: repoURL
+        ), result.terminationStatus == 0 else { return [:] }
+        return BranchCreator.parseTips(result.standardOutput)
+    }
+
+    /// The ref and tip that "unique to this branch" is measured against: the
+    /// remote default branch when there is one, since a local `main` can be
+    /// weeks stale and would make merged work look unique.
+    func creatorBase(at repoURL: URL, remote: String = "origin") async -> (ref: String, hash: String)? {
+        guard let name = await defaultBranch(at: repoURL, remote: remote) else { return nil }
+        for ref in ["refs/remotes/\(remote)/\(name)", "refs/heads/\(name)"] {
+            if let result = try? await run(["rev-parse", "--verify", "--quiet", ref], in: repoURL),
+               result.terminationStatus == 0 {
+                let hash = result.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !hash.isEmpty { return (ref, hash) }
+            }
+        }
+        return nil
+    }
+
+    /// Inferred creators for `refs`, at most a handful of `git log` runs at a
+    /// time so a repository with hundreds of branches does not spawn them all.
+    /// Refs with no unique commit are absent from the result.
+    func branchCreators(at repoURL: URL, refs: [String], base: String) async -> [String: String] {
+        var found: [String: String] = [:]
+        await withTaskGroup(of: (String, String?).self) { group in
+            var iterator = refs.makeIterator()
+            func addNext() {
+                guard let ref = iterator.next() else { return }
+                group.addTask { [self] in
+                    let result = try? await run(
+                        ["log", "--reverse", "--format=%an", ref, "--not", base, "--"],
+                        in: repoURL
+                    )
+                    guard let result, result.terminationStatus == 0 else { return (ref, nil) }
+                    return (ref, BranchCreator.firstAuthor(fromLog: result.standardOutput))
+                }
+            }
+            for _ in 0..<8 { addNext() }
+            while let (ref, author) = await group.next() {
+                if let author { found[ref] = author }
+                addNext()
+            }
+        }
+        return found
+    }
+}
