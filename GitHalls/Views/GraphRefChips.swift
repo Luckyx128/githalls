@@ -20,7 +20,7 @@ struct GraphRefChips: View {
             }
             if refs.count > visibleLimit {
                 Text("+\(refs.count - visibleLimit)")
-                    .font(.caption2)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
@@ -35,7 +35,7 @@ struct GraphRefChips: View {
             Text(ref.name)
                 .lineLimit(1)
         }
-        .font(.caption2)
+        .font(.caption)
         .fontWeight(ref.kind == .head ? .semibold : .regular)
         .foregroundStyle(foreground(for: ref.kind))
         .padding(.horizontal, 6)

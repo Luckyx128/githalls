@@ -29,11 +29,11 @@ struct CreateBranchFromCommitSheetView: View {
                 HStack(spacing: 6) {
                     Text("Starting at")
                     Text(commit.shortHash)
-                        .font(.system(.caption, design: .monospaced))
+                        .font(.system(.callout, design: .monospaced))
                     Text(commit.summary)
                         .lineLimit(1)
                 }
-                .font(.caption)
+                .font(.callout)
                 .foregroundStyle(.secondary)
             }
 

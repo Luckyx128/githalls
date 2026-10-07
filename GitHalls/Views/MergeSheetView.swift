@@ -53,7 +53,7 @@ struct MergeSheetView: View {
                         .font(.subheadline)
                         .foregroundStyle(.orange)
                     Text("Commits from \"\(selectedBranch)\" will be added to \"\(targetBranch)\". \"\(selectedBranch)\" itself won't change.")
-                        .font(.caption)
+                        .font(.callout)
                         .foregroundStyle(.secondary)
                 }
                 .padding(10)

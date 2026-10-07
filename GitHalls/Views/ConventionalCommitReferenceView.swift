@@ -19,7 +19,7 @@ struct ConventionalCommitReferenceView: View {
                         .font(.system(.body, design: .monospaced))
                         .bold()
                     Text(type.description)
-                        .font(.caption)
+                        .font(.callout)
                         .foregroundStyle(.secondary)
                 }
             }

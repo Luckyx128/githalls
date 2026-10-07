@@ -40,7 +40,7 @@ struct CommitInlineDetailView: View {
             HStack(spacing: 8) {
                 ProgressView().controlSize(.small)
                 Text("Loading changes…")
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
             }
         } else if let detail = viewModel.selectedCommitDetail,
@@ -50,7 +50,7 @@ struct CommitInlineDetailView: View {
 
                 if detail.files.isEmpty {
                     Text("No file changes.")
-                        .font(.caption)
+                        .font(.callout)
                         .foregroundStyle(.secondary)
                 } else {
                     // Inline in the graph the detail cannot take the height it
@@ -63,7 +63,7 @@ struct CommitInlineDetailView: View {
             }
         } else {
             Text("No details to show.")
-                .font(.caption)
+                .font(.callout)
                 .foregroundStyle(.secondary)
         }
     }
@@ -80,7 +80,7 @@ struct CommitInlineDetailView: View {
                 viewModel.selectedCommitID = nil
             } label: {
                 Image(systemName: "chevron.up")
-                    .font(.caption.weight(.semibold))
+                    .font(.callout.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
@@ -97,13 +97,13 @@ struct CommitInlineDetailView: View {
                     Text(detail.commit.date.formatted(date: .abbreviated, time: .shortened))
                     Text("·")
                     Text(detail.commit.shortHash)
-                        .font(.system(.caption, design: .monospaced))
+                        .font(.system(.callout, design: .monospaced))
                     Text("·")
                     Text(detail.files.count == 1 ? "1 file" : "\(detail.files.count) files")
 
                     DiffLineCountBadges(added: added, removed: removed)
                 }
-                .font(.caption)
+                .font(.callout)
                 .foregroundStyle(.secondary)
             }
 

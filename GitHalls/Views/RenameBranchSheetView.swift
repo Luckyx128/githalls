@@ -30,7 +30,7 @@ struct RenameBranchSheetView: View {
                 .textFieldStyle(.roundedBorder)
 
             Text("Renames the local branch only. If it has already been pushed, the old name stays on the remote until you delete it there.")
-                .font(.caption)
+                .font(.callout)
                 .foregroundStyle(.secondary)
 
             HStack {

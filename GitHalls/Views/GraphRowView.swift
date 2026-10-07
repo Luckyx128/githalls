@@ -8,7 +8,7 @@
 import SwiftUI
 
 enum GraphMetrics {
-    static let rowHeight: CGFloat = 28
+    static let rowHeight: CGFloat = 32
     static let laneWidth: CGFloat = 14
     static let laneInset: CGFloat = 8
     static let nodeRadius: CGFloat = 4
@@ -82,11 +82,11 @@ struct GraphRowView: View {
 
             Text(row.commit.compactAuthorsLabel)
                 .lineLimit(1)
-                .frame(width: 120, alignment: .trailing)
+                .frame(width: 140, alignment: .trailing)
                 .help(row.commit.coAuthors.isEmpty ? "" : row.commit.allAuthorsLabel)
 
             Text(Self.dateFormatter.string(from: row.commit.date))
-                .frame(width: 80, alignment: .trailing)
+                .frame(width: 90, alignment: .trailing)
 
             HStack(spacing: 2) {
                 if isUnpushed {
@@ -95,11 +95,11 @@ struct GraphRowView: View {
                         .help("Not pushed yet")
                 }
                 Text(row.commit.shortHash)
-                    .font(.system(.caption, design: .monospaced))
+                    .font(.system(.callout, design: .monospaced))
             }
-            .frame(width: 64, alignment: .trailing)
+            .frame(width: 76, alignment: .trailing)
         }
-        .font(.caption)
+        .font(.callout)
         .foregroundStyle(.primary)
         .padding(.trailing, 8)
         .frame(height: GraphMetrics.rowHeight)

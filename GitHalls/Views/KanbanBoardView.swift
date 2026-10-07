@@ -50,7 +50,7 @@ struct KanbanBoardView: View {
                 Text(viewModel.selectedQuery.name)
                     .font(.headline)
                 Text(countLabel)
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
             }
             .help(viewModel.selectedQuery.jql)
@@ -95,7 +95,7 @@ struct KanbanBoardView: View {
                 .foregroundStyle(viewModel.actionFailed ? .red : .green)
 
             Text(message)
-                .font(.caption)
+                .font(.callout)
                 .lineLimit(2)
 
             Spacer()
@@ -104,7 +104,7 @@ struct KanbanBoardView: View {
                 viewModel.clearActionMessage()
             } label: {
                 Image(systemName: "xmark")
-                    .font(.caption)
+                    .font(.callout)
             }
             .buttonStyle(.plain)
         }
@@ -179,7 +179,7 @@ private struct KanbanColumnView: View {
                     .lineLimit(1)
                 Spacer()
                 Text("\(column.count)")
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 1)
@@ -196,7 +196,7 @@ private struct KanbanColumnView: View {
 
                     if column.issues.isEmpty {
                         Text("Nothing here")
-                            .font(.caption)
+                            .font(.callout)
                             .foregroundStyle(.tertiary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 4)
@@ -237,20 +237,20 @@ private struct KanbanCardView: View {
         Button(action: onOpen) {
             VStack(alignment: .leading, spacing: 5) {
                 Text(issue.summary)
-                    .font(.callout)
+                    .font(.rowPrimary)
                     .lineLimit(3)
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 Text(metaLine)
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 if let assignee = issue.assigneeName {
                     Text(assignee)
-                        .font(.caption)
+                        .font(.callout)
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
                         .frame(maxWidth: .infinity, alignment: .leading)

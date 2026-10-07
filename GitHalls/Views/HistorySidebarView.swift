@@ -71,9 +71,9 @@ struct CommitRow: View {
                         .help("Not pushed yet")
                 }
                 Text(commit.shortHash)
-                    .font(.system(.caption, design: .monospaced))
+                    .font(.system(.callout, design: .monospaced))
             }
-            .font(.caption)
+            .font(.callout)
             .foregroundStyle(.secondary)
         }
         .padding(.vertical, 2)

@@ -88,7 +88,7 @@ struct CommitFilesBrowser: View {
                 // unless the old name is on screen next to the new one.
                 if let originalPath = file.originalPath {
                     Text("renamed from \(originalPath)")
-                        .font(.caption)
+                        .font(.callout)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -123,7 +123,7 @@ private struct CommitFileRow: View {
 
                 if !file.directoryPath.isEmpty {
                     Text(file.directoryPath)
-                        .font(.caption)
+                        .font(.callout)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.head)
@@ -134,7 +134,7 @@ private struct CommitFileRow: View {
 
             if file.isBinary {
                 Image(systemName: "doc.viewfinder")
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
             } else {
                 DiffLineCountBadges(

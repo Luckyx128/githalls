@@ -62,7 +62,7 @@ struct MarkdownView: View {
         case .table(let rows):
             // Monospaced so the pipes line up into columns.
             Text(rows.joined(separator: "\n"))
-                .font(.system(.caption, design: .monospaced))
+                .font(.system(.callout, design: .monospaced))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(10)
                 .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 6))

@@ -35,7 +35,7 @@ struct JiraSettingsView: View {
 
                 if let statusMessage {
                     Text(statusMessage)
-                        .font(.caption)
+                        .font(.callout)
                         .foregroundStyle(statusIsError ? .red : .secondary)
                 }
             }

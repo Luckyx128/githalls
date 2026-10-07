@@ -55,22 +55,22 @@ struct MenuBarPanelView: View {
             if viewModel.changes.isEmpty {
                 Label("No changes", systemImage: "checkmark.circle")
                     .foregroundStyle(.secondary)
-                    .font(.caption)
+                    .font(.callout)
             } else {
                 Text("\(viewModel.changes.count) changed file\(viewModel.changes.count == 1 ? "" : "s")")
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
                 ForEach(viewModel.changes.prefix(5)) { change in
                     HStack(spacing: 6) {
                         StatusBadge(status: change.status)
                         Text(change.fileName)
-                            .font(.caption)
+                            .font(.callout)
                             .lineLimit(1)
                     }
                 }
                 if viewModel.changes.count > 5 {
                     Text("+ \(viewModel.changes.count - 5) more")
-                        .font(.caption2)
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -84,7 +84,7 @@ struct MenuBarPanelView: View {
                         Label("\(viewModel.syncBehind)", systemImage: "arrow.down")
                     }
                 }
-                .font(.caption)
+                .font(.callout)
                 .foregroundStyle(.secondary)
             }
         }
@@ -95,7 +95,7 @@ struct MenuBarPanelView: View {
     private var recentsSection: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text("RECENT")
-                .font(.caption2)
+                .font(.caption)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 12)
             ForEach(viewModel.recentRepositoryURLs.prefix(3), id: \.self) { url in

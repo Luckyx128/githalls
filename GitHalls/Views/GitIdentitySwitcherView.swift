@@ -19,9 +19,9 @@ struct GitIdentitySwitcherView: View {
             if let current = viewModel.currentIdentity {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("\(current.name) <\(current.email)>")
-                        .font(.caption)
+                        .font(.callout)
                     Text(viewModel.hasLocalIdentityOverride ? "Local override for this repo" : "Using global default")
-                        .font(.caption2)
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 .padding(10)
@@ -37,7 +37,7 @@ struct GitIdentitySwitcherView: View {
                         VStack(alignment: .leading, spacing: 1) {
                             Text(identity.label.isEmpty ? identity.name : identity.label)
                             Text(identity.email)
-                                .font(.caption)
+                                .font(.callout)
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
@@ -56,19 +56,19 @@ struct GitIdentitySwitcherView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     if !pendingIdentity.githubUsername.isEmpty {
                         Toggle("Also fix remote URL for this account", isOn: $fixRemoteURL)
-                            .font(.caption)
+                            .font(.callout)
 
                         DisclosureGroup("Save GitHub token (fixes auth errors)", isExpanded: $showTokenField) {
                             VStack(alignment: .leading, spacing: 4) {
                                 SecureField("Personal Access Token", text: $githubToken)
                                     .textFieldStyle(.roundedBorder)
                                 Text("Stored by git's own credential helper for \(pendingIdentity.githubUsername)@github.com — GitHalls doesn't keep a copy. Needed once per account, if push/pull/fetch fails with an authentication error.")
-                                    .font(.caption2)
+                                    .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
                             .padding(.top, 4)
                         }
-                        .font(.caption)
+                        .font(.callout)
                     }
                     Button(viewModel.isSwitchingIdentity || isSavingToken ? "Applying…" : "Use \(pendingIdentity.label.isEmpty ? pendingIdentity.name : pendingIdentity.label)") {
                         let identity = pendingIdentity
@@ -94,7 +94,7 @@ struct GitIdentitySwitcherView: View {
 
             Divider()
             Text("Switching identity changes commit authorship. Push/fetch authenticate separately — use \"Save GitHub token\" above if they fail with an auth error.")
-                .font(.caption2)
+                .font(.caption)
                 .foregroundStyle(.secondary)
                 .padding(10)
         }

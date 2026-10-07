@@ -12,7 +12,7 @@ struct GeneralSettingsView: View {
         Form {
             Toggle("Fetch automatically", isOn: $fetchAutomatically)
             Text("Checks the remote every 5 minutes and when GitHalls comes to the front, so Pull and Push counts stay current. Never asks for a password; failures are silent.")
-                .font(.caption)
+                .font(.callout)
                 .foregroundStyle(.secondary)
         }
         .formStyle(.grouped)

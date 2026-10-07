@@ -83,7 +83,7 @@ struct CommitView: View {
                 showIdentitySwitcher = true
             } label: {
                 Label(identityLabel, systemImage: "person.crop.circle")
-                    .font(.caption)
+                    .font(.callout)
             }
             .buttonStyle(.borderless)
             .popover(isPresented: $showIdentitySwitcher) {
@@ -98,12 +98,12 @@ struct CommitView: View {
                     }
                 }
                 .labelsHidden()
-                .frame(width: 100)
+                .frame(width: 112)
                 .onChange(of: selectedType) { applyPrefix() }
 
                 TextField("scope", text: $scope)
                     .textFieldStyle(.roundedBorder)
-                    .frame(width: 90)
+                    .frame(width: 100)
                     .onSubmit { applyPrefix() }
 
                 Button {
@@ -142,7 +142,7 @@ struct CommitView: View {
                     set: { enabled in Task { await viewModel.setAmending(enabled) } }
                 ))
                 .toggleStyle(.checkbox)
-                .font(.caption)
+                .font(.callout)
                 .help("Rewrite the last commit instead of adding a new one")
             }
 
@@ -182,7 +182,7 @@ struct CommitView: View {
             .disabled(viewModel.isCommitting)
             .help("Undo the last commit and keep its changes staged")
         }
-        .font(.caption)
+        .font(.callout)
         .padding(6)
         .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
     }
@@ -203,7 +203,7 @@ struct CommitView: View {
                 }
                 .buttonStyle(.borderless)
             }
-            .font(.caption)
+            .font(.callout)
             .foregroundStyle(.secondary)
         }
 
@@ -215,7 +215,7 @@ struct CommitView: View {
                     .onChange(of: coAuthorText) { coAuthorInvalid = false }
                 if coAuthorInvalid {
                     Text("Use the form Name <email>")
-                        .font(.caption2)
+                        .font(.caption)
                         .foregroundStyle(.red)
                 }
             }
@@ -230,7 +230,7 @@ struct CommitView: View {
                 Button("Other…") { showCoAuthorField = true }
             } label: {
                 Label("Co-author", systemImage: "plus")
-                    .font(.caption)
+                    .font(.callout)
             }
             .menuStyle(.borderlessButton)
             .fixedSize()

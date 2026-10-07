@@ -93,7 +93,7 @@ struct CreatePullRequestSheetView: View {
 
             if let branch = viewModel.currentBranch {
                 Text("From \(branch)")
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
             }
         }
@@ -102,7 +102,7 @@ struct CreatePullRequestSheetView: View {
         .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
 
         Text("Opening it is almost always what you want. A second pull request from this branch has to target a different base branch.")
-            .font(.caption)
+            .font(.callout)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
 
@@ -157,14 +157,14 @@ struct CreatePullRequestSheetView: View {
                 "This branch already has #\(supersedes.number) open. Pick a different base branch, or GitHub will refuse the new one.",
                 systemImage: "exclamationmark.triangle"
             )
-            .font(.caption)
+            .font(.callout)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
         }
 
         if let currentBranch = viewModel.currentBranch {
             Text(sourceSummary(branch: currentBranch))
-                .font(.caption)
+                .font(.callout)
                 .foregroundStyle(.secondary)
         }
 

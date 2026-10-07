@@ -30,7 +30,7 @@ struct MergeBannerView: View {
                     "^[\(markerPaths.count) file](inflect: true) still contain conflict markers",
                     systemImage: "exclamationmark.triangle"
                 )
-                .font(.caption)
+                .font(.callout)
                 .foregroundStyle(.orange)
             }
 
@@ -42,7 +42,7 @@ struct MergeBannerView: View {
                         viewModel.useEditableMergeMessage()
                     }
                     .buttonStyle(.borderless)
-                    .font(.caption)
+                    .font(.callout)
                     .disabled(viewModel.mergeState?.preparedMessage == nil)
                 } else {
                     if !ExternalEditors.installed.isEmpty {
@@ -53,14 +53,14 @@ struct MergeBannerView: View {
                         }
                         .menuStyle(.borderlessButton)
                         .fixedSize()
-                        .font(.caption)
+                        .font(.callout)
                     }
 
                     Button("Mark All Resolved") {
                         Task { await viewModel.markAllResolved() }
                     }
                     .buttonStyle(.borderless)
-                    .font(.caption)
+                    .font(.callout)
                     .disabled(viewModel.isStaging)
                 }
 
@@ -70,7 +70,7 @@ struct MergeBannerView: View {
                     confirmingAbort = true
                 }
                 .buttonStyle(.borderless)
-                .font(.caption)
+                .font(.callout)
                 .disabled(viewModel.isFinalizingMerge)
             }
         }
@@ -97,7 +97,7 @@ struct MergeBannerView: View {
                 .foregroundStyle(.orange)
 
             Text("^[\(viewModel.conflictedChanges.count) file](inflect: true) with conflicts")
-                .font(.caption)
+                .font(.callout)
 
             Spacer()
         }
@@ -110,14 +110,14 @@ struct MergeBannerView: View {
                     .foregroundStyle(.green)
 
                 Text("All conflicts resolved")
-                    .font(.caption.weight(.medium))
+                    .font(.callout.weight(.medium))
 
                 Spacer()
             }
 
             if let summary = viewModel.preparedMergeSummary {
                 Text(viewModel.commitSummary.isEmpty ? summary : viewModel.commitSummary)
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }

@@ -28,7 +28,7 @@ struct SetUpstreamSheetView: View {
 
             if remoteBranches.isEmpty {
                 Text("This repository has no remote branches yet. Push \"\(branch)\" first.")
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
             } else {
                 Picker("", selection: $selected) {
@@ -40,7 +40,7 @@ struct SetUpstreamSheetView: View {
                 .labelsHidden()
 
                 Text(current.map { "Currently tracking \($0)." } ?? "This branch tracks nothing yet.")
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
             }
 

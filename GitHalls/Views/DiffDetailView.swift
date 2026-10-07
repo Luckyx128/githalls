@@ -16,7 +16,7 @@ struct DiffDetailView: View {
             VStack(alignment: .leading, spacing: 12) {
                 if let name = viewModel.readmeFileName {
                     Label(name, systemImage: "doc.text")
-                        .font(.caption)
+                        .font(.callout)
                         .foregroundStyle(.secondary)
                 }
 

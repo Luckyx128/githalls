@@ -38,7 +38,7 @@ struct FilePreviewView: View {
             } else if beforeData == nil && afterData == nil {
                 // Both sides missing means git could not hand over either one.
                 Label("This file's contents could not be read.", systemImage: "questionmark.square.dashed")
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
                     .padding(24)
                     .frame(maxWidth: .infinity)
@@ -96,19 +96,19 @@ struct FilePreviewView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 4))
 
                 Text(dimensions(of: image))
-                    .font(.caption2)
+                    .font(.caption)
                     .foregroundStyle(.tertiary)
             } else {
                 // The extension said image and the decoder disagreed. Say so
                 // rather than showing an empty frame.
                 Label("Not a format this Mac can draw", systemImage: "photo.badge.exclamationmark")
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
                     .padding(24)
             }
 
             Text("\(title) · \(FilePreview.formattedSize(data.count))")
-                .font(.caption)
+                .font(.callout)
                 .foregroundStyle(.secondary)
         }
     }
@@ -131,7 +131,7 @@ struct FilePreviewView: View {
                 .font(.headline)
 
             Text(sizeLabel)
-                .font(.caption)
+                .font(.callout)
                 .foregroundStyle(.secondary)
 
             // Only the working tree has a file to open; a past revision is not

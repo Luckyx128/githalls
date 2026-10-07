@@ -98,7 +98,6 @@ struct ContentView: View {
             Text("Graph").tag(SidebarMode.graph)
         }
         .pickerStyle(.segmented)
-        .controlSize(.small)
         .labelsHidden()
         .padding(8)
     }

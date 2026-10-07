@@ -21,7 +21,7 @@ struct EditorSettingsView: View {
                 }
             }
             Text("Command-line editors have no window of their own, so GitHalls opens them in this terminal.")
-                .font(.caption)
+                .font(.callout)
                 .foregroundStyle(.secondary)
         }
         .formStyle(.grouped)

@@ -20,7 +20,7 @@ struct ChangesSidebarView: View {
                 .foregroundStyle(.orange)
 
             Text("^[\(viewModel.conflictedChanges.count) file](inflect: true) with conflicts")
-                .font(.caption)
+                .font(.callout)
 
             Spacer()
         }
@@ -88,7 +88,7 @@ struct ChangesSidebarView: View {
                 Task { await viewModel.setStaged(staged, for: group) }
             }
             .buttonStyle(.borderless)
-            .font(.caption)
+            .font(.callout)
             .disabled(viewModel.isStaging)
         }
     }
@@ -103,7 +103,7 @@ struct ChangesSidebarView: View {
                         if !viewModel.recentRepositoryURLs.isEmpty {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("RECENT")
-                                    .font(.caption)
+                                    .font(.callout)
                                     .foregroundStyle(.secondary)
 
                                 ForEach(viewModel.recentRepositoryURLs, id: \.self) { url in
@@ -256,7 +256,7 @@ struct FileChangeRow: View {
                 
                 if !change.directoryPath.isEmpty {
                     Text(change.directoryPath)
-                        .font(.caption)
+                        .font(.callout)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
@@ -293,9 +293,9 @@ struct StatusBadge: View {
 
     var body: some View {
         Text(letter)
-            .font(.system(size: 12, weight: .bold, design: .rounded))
+            .font(.system(size: 13, weight: .bold, design: .rounded))
             .foregroundStyle(color.darker(bytTones: 3))
-            .frame(width: 16, height: 16)
+            .frame(width: 18, height: 18)
             .background(color, in: RoundedRectangle(cornerRadius: 4))
     }
 

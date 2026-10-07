@@ -98,7 +98,7 @@ private struct QueryRow: View {
                     .lineLimit(1)
                 if !query.isBuiltIn {
                     Text(query.jql)
-                        .font(.caption)
+                        .font(.callout)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
@@ -143,7 +143,7 @@ private struct QueryEditorView: View {
                 .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.3)))
 
             Text("Jira Query Language, exactly as in Jira's own search. currentUser() and openSprints() work here too.")
-                .font(.caption)
+                .font(.callout)
                 .foregroundStyle(.secondary)
 
             HStack {

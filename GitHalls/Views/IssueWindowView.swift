@@ -105,13 +105,13 @@ struct IssueWindowView: View {
                 metaRow("Created", formatted(detail.created))
                 metaRow("Updated", formatted(detail.updated))
             }
-            .font(.caption)
+            .font(.callout)
 
             if !detail.labels.isEmpty {
                 HStack(spacing: 6) {
                     ForEach(detail.labels, id: \.self) { label in
                         Text(label)
-                            .font(.caption)
+                            .font(.callout)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 2)
                             .background(.quaternary, in: Capsule())
@@ -151,7 +151,7 @@ struct IssueWindowView: View {
                 .fill(statusColor)
                 .frame(width: 8, height: 8)
             Text(detail.status)
-                .font(.caption)
+                .font(.callout)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 3)
@@ -215,7 +215,7 @@ struct IssueWindowView: View {
 
             if let detailError {
                 Text(detailError)
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundStyle(.red)
             } else if let description = detail.description {
                 // Empty means Jira has none, which is worth stating rather than
@@ -278,18 +278,18 @@ struct IssueWindowView: View {
 
             if let repoURL = repositoryViewModel.repositoryURL {
                 Text("Will be created in \(repoURL.lastPathComponent), from the branch checked out there now.")
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
             } else {
                 Text("Open a repository first — a branch needs somewhere to be created.")
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
             }
 
             if let actionResult {
                 Label(actionResult.message,
                       systemImage: actionResult.failed ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundStyle(actionResult.failed ? Color.red : Color.secondary)
                     .padding(.top, 2)
             }

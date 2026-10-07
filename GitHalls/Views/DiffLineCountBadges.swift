@@ -27,7 +27,7 @@ struct DiffLineCountBadges: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .font(.system(.caption, design: .monospaced))
+        .font(.system(.callout, design: .monospaced))
         .monospacedDigit()
     }
 }

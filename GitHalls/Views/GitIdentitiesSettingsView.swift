@@ -40,7 +40,7 @@ struct GitIdentitiesSettingsView: View {
 
             if identities.isEmpty {
                 Text("No identities saved yet.")
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
             } else {
                 VStack(alignment: .leading, spacing: 12) {
@@ -99,7 +99,7 @@ struct GitIdentitiesSettingsView: View {
     private func labeledField(_ title: String, text: Binding<String>, prompt: String? = nil) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title)
-                .font(.caption)
+                .font(.callout)
                 .foregroundStyle(.secondary)
             TextField("", text: text, prompt: prompt.map { Text($0) })
                 .textFieldStyle(.roundedBorder)
@@ -108,7 +108,7 @@ struct GitIdentitiesSettingsView: View {
 
     private func note(_ text: String) -> some View {
         Text(text)
-            .font(.caption)
+            .font(.callout)
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -136,7 +136,7 @@ private struct IdentityRow: View {
             }
             if let status = tokenStatus[identity.id], !isEditingToken {
                 Text(status)
-                    .font(.caption2)
+                    .font(.caption)
                     .foregroundStyle(status == "Saved." ? Color.secondary : Color.red)
             }
         }
@@ -148,11 +148,11 @@ private struct IdentityRow: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(identity.label.isEmpty ? identity.name : identity.label)
                 Text("\(identity.name) <\(identity.email)>")
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
                 if !identity.githubUsername.isEmpty {
                     Text("GitHub: \(identity.githubUsername)")
-                        .font(.caption2)
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -182,7 +182,7 @@ private struct IdentityRow: View {
             SecureField("Personal Access Token", text: $tokenInput)
                 .textFieldStyle(.roundedBorder)
             Text("Stored by git's own credential helper for \(identity.githubUsername)@github.com — GitHalls doesn't keep a copy. Needs \"repo\" scope; if the account belongs to an org with SSO enforced, the token also needs to be authorized for that org.")
-                .font(.caption2)
+                .font(.caption)
                 .foregroundStyle(.secondary)
             HStack {
                 Button(isSavingToken ? "Saving…" : "Save Token", action: saveToken)
