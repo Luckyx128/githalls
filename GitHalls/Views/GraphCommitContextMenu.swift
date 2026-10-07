@@ -8,7 +8,7 @@
 import Foundation
 import SwiftUI
 
-/// The sheets the graph's context menu can raise. Presented by `GraphView`, not
+/// The sheets the graph's context menu can raise. Presented by `HistorySidebarView`, not
 /// by the row: rows are recycled as the list scrolls, and a sheet owned by one
 /// would vanish with it.
 enum GraphSheet: Identifiable {

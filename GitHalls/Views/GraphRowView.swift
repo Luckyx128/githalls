@@ -25,29 +25,29 @@ enum GraphMetrics {
     /// collapsed onto one marker.
     static let overflowWidth: CGFloat = 14
 
-    static func drawnLaneCount(_ laneCount: Int) -> Int {
-        min(max(laneCount, 1), maxDrawnLanes)
+    static func drawnLaneCount(_ laneCount: Int, maxLanes: Int = maxDrawnLanes) -> Int {
+        min(max(laneCount, 1), maxLanes)
     }
 
-    static func hasOverflow(laneCount: Int) -> Bool {
-        laneCount > maxDrawnLanes
+    static func hasOverflow(laneCount: Int, maxLanes: Int = maxDrawnLanes) -> Bool {
+        laneCount > maxLanes
     }
 
-    static func gutterWidth(laneCount: Int) -> CGFloat {
+    static func gutterWidth(laneCount: Int, maxLanes: Int = maxDrawnLanes) -> CGFloat {
         laneInset * 2
-            + laneWidth * CGFloat(drawnLaneCount(laneCount))
-            + (hasOverflow(laneCount: laneCount) ? overflowWidth : 0)
+            + laneWidth * CGFloat(drawnLaneCount(laneCount, maxLanes: maxLanes))
+            + (hasOverflow(laneCount: laneCount, maxLanes: maxLanes) ? overflowWidth : 0)
     }
 
     static func x(lane: Int) -> CGFloat {
         laneInset + laneWidth * (CGFloat(lane) + 0.5)
     }
 
-    static func isDrawn(lane: Int) -> Bool { lane < maxDrawnLanes }
+    static func isDrawn(lane: Int, maxLanes: Int = maxDrawnLanes) -> Bool { lane < maxLanes }
 
     /// Where a line heading for a column the gutter does not draw leaves.
-    static func overflowX(laneCount: Int) -> CGFloat {
-        laneInset + laneWidth * CGFloat(drawnLaneCount(laneCount)) + overflowWidth / 2
+    static func overflowX(laneCount: Int, maxLanes: Int = maxDrawnLanes) -> CGFloat {
+        laneInset + laneWidth * CGFloat(drawnLaneCount(laneCount, maxLanes: maxLanes)) + overflowWidth / 2
     }
 }
 
@@ -76,6 +76,7 @@ struct GraphRowView: View {
 
             Text(row.commit.summary)
                 .lineLimit(1)
+                .font(.rowPrimary)
                 .truncationMode(.tail)
 
             Spacer(minLength: 8)
@@ -95,11 +96,11 @@ struct GraphRowView: View {
                         .help("Not pushed yet")
                 }
                 Text(row.commit.shortHash)
-                    .font(.system(.callout, design: .monospaced))
+                    .font(.rowMono)
             }
             .frame(width: 76, alignment: .trailing)
         }
-        .font(.callout)
+        .font(.rowSecondary)
         .foregroundStyle(.primary)
         .padding(.trailing, 8)
         .frame(height: GraphMetrics.rowHeight)
@@ -116,6 +117,7 @@ struct GraphLaneCanvas: View {
     let row: GraphRow
     let laneCount: Int
     let isHead: Bool
+    var maxLanes = GraphMetrics.maxDrawnLanes
 
     var body: some View {
         Canvas { context, size in
@@ -142,10 +144,10 @@ struct GraphLaneCanvas: View {
         let color = GraphLanePalette.color(forLane: row.lane)
         let radius = GraphMetrics.nodeRadius
 
-        guard GraphMetrics.isDrawn(lane: row.lane) else {
+        guard GraphMetrics.isDrawn(lane: row.lane, maxLanes: maxLanes) else {
             // The commit lives in a column the gutter does not draw. It still
             // has a row — only its position in the graph is off to the right.
-            let centre = CGPoint(x: GraphMetrics.overflowX(laneCount: laneCount), y: mid)
+            let centre = CGPoint(x: GraphMetrics.overflowX(laneCount: laneCount, maxLanes: maxLanes), y: mid)
             let dot = Path(ellipseIn: CGRect(
                 x: centre.x - 2.5, y: centre.y - 2.5, width: 5, height: 5
             ))
@@ -179,13 +181,13 @@ struct GraphLaneCanvas: View {
     }
 
     private func stroke(_ context: inout GraphicsContext, edge: GraphEdge, height: CGFloat, mid: CGFloat) {
-        let fromDrawn = GraphMetrics.isDrawn(lane: edge.from)
-        let toDrawn = GraphMetrics.isDrawn(lane: edge.to)
+        let fromDrawn = GraphMetrics.isDrawn(lane: edge.from, maxLanes: maxLanes)
+        let toDrawn = GraphMetrics.isDrawn(lane: edge.to, maxLanes: maxLanes)
         // Both ends are past the cap: nothing meaningful to show, and drawing it
         // would just pile lines on the overflow marker.
         guard fromDrawn || toDrawn else { return }
 
-        let overflowX = GraphMetrics.overflowX(laneCount: laneCount)
+        let overflowX = GraphMetrics.overflowX(laneCount: laneCount, maxLanes: maxLanes)
         let x0 = fromDrawn ? GraphMetrics.x(lane: edge.from) : overflowX
         let x1 = toDrawn ? GraphMetrics.x(lane: edge.to) : overflowX
         var path = Path()
@@ -224,35 +226,5 @@ struct GraphLaneCanvas: View {
             with: .color(fromDrawn && toDrawn ? color : color.opacity(0.45)),
             style: StrokeStyle(lineWidth: GraphMetrics.lineWidth, lineCap: .round)
         )
-    }
-}
-
-/// The gutter of an expanded detail block.
-///
-/// An expanded row breaks the list's run of equal-height bands, so the lane
-/// lines would stop dead at the top of the detail and start again below it.
-/// Continuing them here keeps the graph readable while a commit is open.
-struct GraphLaneContinuation: View {
-    /// The edges leaving the bottom of the row above.
-    let edges: [GraphEdge]
-    let laneCount: Int
-
-    var body: some View {
-        Canvas { context, size in
-            for edge in edges {
-                guard GraphMetrics.isDrawn(lane: edge.to) else { continue }
-                let x = GraphMetrics.x(lane: edge.to)
-                var path = Path()
-                path.move(to: CGPoint(x: x, y: 0))
-                path.addLine(to: CGPoint(x: x, y: size.height))
-                context.stroke(
-                    path,
-                    with: .color(GraphLanePalette.color(forLane: edge.colorLane).opacity(0.5)),
-                    style: StrokeStyle(lineWidth: GraphMetrics.lineWidth, lineCap: .butt)
-                )
-            }
-        }
-        .clipped()
-        .allowsHitTesting(false)
     }
 }

@@ -14,12 +14,6 @@ struct ContentView: View {
     @State private var showBranchSwitcher = false
     @State private var sheet: ContentSheet?
 
-    /// Graph mode hides the sidebar: a 280pt column showing nothing is dead
-    /// space exactly when the graph needs the width most. The mode picker lives
-    /// in the sidebar, so the toolbar keeps its own toggle — otherwise entering
-    /// Graph would be a door that only opens one way.
-    @State private var columnVisibility: NavigationSplitViewVisibility = .all
-
     /// Everything the toolbar can put on screen. One piece of state instead of
     /// four booleans, and one place to attach the presentations to — a `.sheet`
     /// hung off a toolbar item is presented by a view that may not be in the
@@ -30,7 +24,7 @@ struct ContentView: View {
     }
 
     var body: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
+        NavigationSplitView {
             VStack(spacing: 0) {
                 modePicker
 
@@ -43,10 +37,6 @@ struct ContentView: View {
                     HistorySidebarView(viewModel: viewModel)
                 case .kanban:
                     KanbanSidebarView(viewModel: jiraViewModel)
-                case .graph:
-                    // The graph is the whole of Graph mode; the sidebar is here
-                    // only so the picker above stays reachable.
-                    Spacer()
                 }
             }
             .navigationSplitViewColumnWidth(min: 240, ideal: 280)
@@ -58,12 +48,7 @@ struct ContentView: View {
                 CommitDetailView(viewModel: viewModel)
             case .kanban:
                 KanbanBoardView(viewModel: jiraViewModel)
-            case .graph:
-                GraphView(viewModel: viewModel)
             }
-        }
-        .onChange(of: viewModel.sidebarMode, initial: true) { _, mode in
-            columnVisibility = mode == .graph ? .detailOnly : .all
         }
         .task {
             viewModel.openMostRecentRepositoryIfNeeded()
@@ -95,7 +80,6 @@ struct ContentView: View {
             Text("Changes").tag(SidebarMode.changes)
             Text("History").tag(SidebarMode.history)
             Text("Kanban").tag(SidebarMode.kanban)
-            Text("Graph").tag(SidebarMode.graph)
         }
         .pickerStyle(.segmented)
         .labelsHidden()

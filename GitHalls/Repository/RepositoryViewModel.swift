@@ -9,7 +9,7 @@ import Foundation
 import Observation
 
 enum SidebarMode: Hashable {
-    case changes, history, kanban, graph
+    case changes, history, kanban
 }
 
 @Observable
@@ -76,7 +76,6 @@ final class RepositoryViewModel {
     var recentRepositoryURLs: [URL] = RecentRepositoriesStore.load()
     
     var sidebarMode: SidebarMode = .changes
-    var commits: [Commit] = []
     var selectedCommitID: Commit.ID?
     
     var selectedCommitDetail: CommitDetail?
@@ -102,6 +101,11 @@ final class RepositoryViewModel {
     var isSwitchingBranch = false
 
     var graphRows: [GraphRow] = []
+
+    /// Whether the history list draws every branch or only what HEAD reaches.
+    var graphShowsAllBranches: Bool = UserDefaults.standard.object(forKey: "historyAllBranches") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(graphShowsAllBranches, forKey: "historyAllBranches") }
+    }
 
     /// Fixed for the whole list, so the text columns line up on every row.
     var graphLaneCount = 1
@@ -331,7 +335,6 @@ final class RepositoryViewModel {
             selectedChangeID = nil
             currentDiff = nil
             await refreshStatus()
-            await loadCommits()
             await loadGraph()
             errorMessage = nil
         } catch {
@@ -378,7 +381,6 @@ final class RepositoryViewModel {
             commitCoAuthors = parts.coAuthors
             isAmending = false
             await refreshStatus()
-            await loadCommits()
             await loadGraph()
             errorMessage = nil
         } catch {
@@ -449,7 +451,6 @@ final class RepositoryViewModel {
         repositoryURL = url
         selectedChangeID = nil
         currentDiff = nil
-        commits = []
         selectedCommitID = nil
         selectedCommitDetail = nil
         isLoadingCommitDetail = false
@@ -488,7 +489,6 @@ final class RepositoryViewModel {
         isAmending = false
         headCommit = nil
         errorMessage = nil
-        commits = []
         selectedCommitID = nil
         selectedCommitDetail = nil
         isLoadingCommitDetail = false
@@ -511,17 +511,6 @@ final class RepositoryViewModel {
         recentRepositoryURLs = RecentRepositoriesStore.load()
     }
     
-    func loadCommits() async {
-        guard let repositoryURL else { return }
-        do {
-            commits = try await gitService.log(at: repositoryURL)
-            unpushedCommitHashes = await gitService.unpushedCommitHashes(at: repositoryURL)
-            errorMessage = nil
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-    
     func loadGraph() async {
         guard let repositoryURL else { return }
         let token = UUID()
@@ -529,7 +518,7 @@ final class RepositoryViewModel {
         isLoadingGraph = true
         defer { if graphRequestToken == token { isLoadingGraph = false } }
         do {
-            let commits = try await gitService.graphLog(at: repositoryURL, limit: graphCommitLimit)
+            let commits = try await gitService.graphLog(at: repositoryURL, limit: graphCommitLimit, allBranches: graphShowsAllBranches)
             // O(rows x lanes) — about ten thousand integer comparisons at the
             // current limit, well inside a frame. If `graphCommitLimit` ever
             // grows past a few thousand, wrap this in
@@ -553,7 +542,6 @@ final class RepositoryViewModel {
     /// and the branch list can all have moved.
     private func reloadAfterBranchChange() async {
         await refreshStatus()
-        await loadCommits()
         await loadGraph()
         await loadBranches()
     }
@@ -685,12 +673,10 @@ final class RepositoryViewModel {
     }
 
     func loadCommitDetail() async {
-        // `commits` is History mode's list, which only covers the current
-        // branch. A commit picked out of the graph can belong to any branch, so
-        // fall back to the graph's own rows before giving up.
+        // The selection always comes from the graph's rows, which may span
+        // every branch.
         guard let repositoryURL, let hash = selectedCommitID,
-              let commit = commits.first(where: { $0.id == hash })
-                ?? graphRows.first(where: { $0.commit.hash == hash })?.commit.commit else {
+              let commit = graphRows.first(where: { $0.commit.hash == hash })?.commit.commit else {
             selectedCommitDetail = nil
             return
         }
@@ -805,7 +791,7 @@ final class RepositoryViewModel {
             selectedCommitID = nil
             selectedCommitDetail = nil
             await refreshStatus()
-            await loadCommits()
+            await loadGraph()
             await loadBranches()
             errorMessage = nil
         } catch {
@@ -827,7 +813,7 @@ final class RepositoryViewModel {
             selectedCommitID = nil
             selectedCommitDetail = nil
             await refreshStatus()
-            await loadCommits()
+            await loadGraph()
             await loadBranches()
             errorMessage = nil
         } catch {
@@ -904,7 +890,6 @@ final class RepositoryViewModel {
         unpushedCommitHashes = await gitService.unpushedCommitHashes(at: repositoryURL)
         if await gitService.remoteRefsSnapshot(at: repositoryURL) != before {
             await loadGraph()
-            await loadCommits()
         }
         if let pendingError { errorMessage = pendingError }
     }
@@ -933,14 +918,12 @@ final class RepositoryViewModel {
             } else {
                 errorMessage = error.localizedDescription
             }
-            await loadCommits()
             await loadGraph()
             return
         }
         selectedChangeID = nil
         currentDiff = nil
         await refreshStatus()
-        await loadCommits()
         await loadGraph()
     }
 
@@ -953,7 +936,7 @@ final class RepositoryViewModel {
             selectedChangeID = nil
             currentDiff = nil
             await refreshStatus()
-            await loadCommits()
+            await loadGraph()
             errorMessage = nil
         } catch {
             pullBlockedByLocalChanges = Self.isBlockedByLocalChanges(error)
@@ -974,7 +957,7 @@ final class RepositoryViewModel {
             selectedChangeID = nil
             currentDiff = nil
             await refreshStatus()
-            await loadCommits()
+            await loadGraph()
 
             // Not an error — the pull worked. But saying nothing would leave the
             // user in a conflicted tree with a stash nobody mentioned.
@@ -1164,7 +1147,6 @@ final class RepositoryViewModel {
             selectedChangeID = nil
             currentDiff = nil
             await refreshStatus()
-            await loadCommits()
             await loadGraph()
             errorMessage = nil
         } catch {
@@ -1296,7 +1278,7 @@ final class RepositoryViewModel {
         // Either way: a merge that conflicted left the working tree changed, and
         // that is exactly what the user needs to see.
         await refreshStatus()
-        await loadCommits()
+        await loadGraph()
     }
 
     /// A push git refused because the upstream has commits this clone has never
@@ -1317,7 +1299,7 @@ final class RepositoryViewModel {
             selectedChangeID = nil
             currentDiff = nil
             await refreshStatus()
-            await loadCommits()
+            await loadGraph()
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription

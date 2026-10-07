@@ -476,10 +476,11 @@ extension GitService {
     /// repository that commits thousands of times in this window.
     private static let graphLogSince = "2.months"
 
-    func graphLog(at repoURL: URL, limit: Int = 1000) async throws -> [GraphCommit] {
+    func graphLog(at repoURL: URL, limit: Int = 1000, allBranches: Bool = true) async throws -> [GraphCommit] {
+        let scope = allBranches ? ["--branches", "--tags", "--remotes", "HEAD"] : ["HEAD"]
         let result = try await run([
             "log",
-            "--branches", "--tags", "--remotes", "HEAD",
+        ] + scope + [
             "--topo-order",
             "--since=\(Self.graphLogSince)",
             "--max-count=\(limit)",
