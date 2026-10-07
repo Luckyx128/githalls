@@ -160,9 +160,9 @@ struct ContentView: View {
                     Text(viewModel.currentBranch ?? "Branch")
                         .lineLimit(1)
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(.quaternary, in: Capsule())
+                // The toolbar already wraps items in Liquid Glass; a fill of our
+                // own shows up as a grey pill inside it.
+                .padding(.horizontal, 4)
             }
             .buttonStyle(.plain)
             .help("Switch branch")
