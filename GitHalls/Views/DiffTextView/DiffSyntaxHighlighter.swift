@@ -29,7 +29,6 @@ final class DiffSyntaxHighlighter: DiffTextHighlighting, @unchecked Sendable {
     static let maxLines = 6_000
 
     private let queue = DispatchQueue(label: "tech.luckxy.githalls.highlightr")
-    private let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
     private let cache = NSCache<NSString, NSAttributedString>()
 
     private var highlightr: Highlightr?
@@ -45,15 +44,15 @@ final class DiffSyntaxHighlighter: DiffTextHighlighting, @unchecked Sendable {
         guard let language,
               text.utf16.count <= Self.maxBytes,
               newlineCount < Self.maxLines else {
-            return plainLines(text)
+            return plainLines(text, font: theme.font)
         }
 
         return queue.sync { () -> [NSAttributedString] in
             guard let highlightr = configuredHighlightr(theme: theme) else {
-                return plainLines(text)
+                return plainLines(text, font: theme.font)
             }
 
-            let key = "\(theme.highlightrThemeName)|\(language)|\(text.hashValue)" as NSString
+            let key = "\(theme.cacheKey)|\(language)|\(text.hashValue)" as NSString
             let whole: NSAttributedString
             if let cached = cache.object(forKey: key) {
                 whole = cached
@@ -61,13 +60,13 @@ final class DiffSyntaxHighlighter: DiffTextHighlighting, @unchecked Sendable {
                 cache.setObject(rendered, forKey: key)
                 whole = rendered
             } else {
-                return plainLines(text)
+                return plainLines(text, font: theme.font)
             }
 
             let lines = Self.splitLines(whole)
             // highlight.js can, in rare cases, not round-trip newlines 1:1
             // (HTML entities, stray \r). Bail to plain rather than misalign.
-            return lines.count == newlineCount + 1 ? lines : plainLines(text)
+            return lines.count == newlineCount + 1 ? lines : plainLines(text, font: theme.font)
         }
     }
 
@@ -81,7 +80,7 @@ final class DiffSyntaxHighlighter: DiffTextHighlighting, @unchecked Sendable {
 
         if loadedTheme != theme {
             highlightr.setTheme(to: theme.highlightrThemeName)
-            highlightr.theme.setCodeFont(font)
+            highlightr.theme.setCodeFont(theme.font)
             loadedTheme = theme
             cache.removeAllObjects()
         }
@@ -90,7 +89,7 @@ final class DiffSyntaxHighlighter: DiffTextHighlighting, @unchecked Sendable {
 
     // MARK: - Plain fallback
 
-    private func plainLines(_ text: String) -> [NSAttributedString] {
+    private func plainLines(_ text: String, font: NSFont) -> [NSAttributedString] {
         let attributes: [NSAttributedString.Key: Any] = [.font: font]
         return Self.splitPlain(text).map { NSAttributedString(string: $0, attributes: attributes) }
     }

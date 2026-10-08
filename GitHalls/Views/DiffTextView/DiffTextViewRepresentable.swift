@@ -21,8 +21,20 @@ struct DiffTextViewRepresentable: NSViewRepresentable {
     let presentation: DiffPresentation
     let colorScheme: ColorScheme
 
+    // Reading the settings here makes SwiftUI call updateNSView whenever they change.
+    @AppStorage(CodeAppearance.lightThemeKey) private var lightThemeName = CodeAppearance.defaultLightTheme
+    @AppStorage(CodeAppearance.darkThemeKey) private var darkThemeName = CodeAppearance.defaultDarkTheme
+    @AppStorage(CodeAppearance.fontKey) private var fontID = CodeAppearance.defaultFontID
+    @AppStorage(CodeAppearance.sizeKey) private var fontSize = CodeAppearance.defaultSize
+
     private var theme: DiffTextTheme {
-        DiffTextTheme.make(colorScheme == .dark ? .dark : .light)
+        DiffTextTheme.make(CodeAppearance.theme(
+            isDark: colorScheme == .dark,
+            lightTheme: lightThemeName,
+            darkTheme: darkThemeName,
+            fontID: fontID,
+            size: fontSize
+        ))
     }
 
     func makeCoordinator() -> DiffTextCoordinator {

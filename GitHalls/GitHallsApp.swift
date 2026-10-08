@@ -39,6 +39,8 @@ struct GitHallsApp: App {
                     .tabItem { Label("Git Identities", systemImage: "person.2") }
                 JiraSettingsView()
                     .tabItem { Label("Jira", systemImage: "checklist") }
+                CodeSettingsView()
+                    .tabItem { Label("Code", systemImage: "chevron.left.forwardslash.chevron.right") }
                 EditorSettingsView()
                     .tabItem { Label("Editors", systemImage: "terminal") }
             }

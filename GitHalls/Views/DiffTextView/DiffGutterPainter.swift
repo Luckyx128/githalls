@@ -18,7 +18,7 @@ import AppKit
 
 nonisolated enum DiffGutterMetrics {
     static let horizontalPadding: CGFloat = 6
-    static let markerWidth: CGFloat = 12
+    static let markerWidth: CGFloat = 12  // wide enough for one marker glyph up to ~19pt
     static let columnGap: CGFloat = 6
     /// Gap between the gutter's right edge and the first glyph of a line.
     static let textGap: CGFloat = 8
@@ -99,7 +99,7 @@ struct DiffGutterPainter {
         default: return
         }
         let text = NSAttributedString(string: symbol, attributes: [
-            .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .bold),
+            .font: NSFont.monospacedSystemFont(ofSize: theme.headerFont.pointSize, weight: .bold),
             .foregroundColor: color,
         ])
         let size = text.size()

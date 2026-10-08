@@ -50,7 +50,7 @@ nonisolated enum DiffHighlightMapper {
                     rawText: line.text
                 ))
             case .context:
-                let content = element(newLines, newIndex) ?? plain(line.text)
+                let content = element(newLines, newIndex) ?? plain(line.text, theme)
                 mapped.append(HighlightedDiffLine(
                     kind: .context,
                     content: content,
@@ -61,7 +61,7 @@ nonisolated enum DiffHighlightMapper {
                 oldIndex += 1
                 newIndex += 1
             case .addition:
-                let content = element(newLines, newIndex) ?? plain(line.text)
+                let content = element(newLines, newIndex) ?? plain(line.text, theme)
                 mapped.append(HighlightedDiffLine(
                     kind: .addition,
                     content: content,
@@ -71,7 +71,7 @@ nonisolated enum DiffHighlightMapper {
                 ))
                 newIndex += 1
             case .deletion:
-                let content = element(oldLines, oldIndex) ?? plain(line.text)
+                let content = element(oldLines, oldIndex) ?? plain(line.text, theme)
                 mapped.append(HighlightedDiffLine(
                     kind: .deletion,
                     content: content,
@@ -96,7 +96,7 @@ nonisolated enum DiffHighlightMapper {
         let joined = raw.joined(separator: "\n")
         let highlighted = highlighter.highlightedLines(for: joined, language: language, theme: theme)
         guard highlighted.count == raw.count else {
-            return raw.map { plain($0) }
+            return raw.map { plain($0, theme) }
         }
         return highlighted
     }
@@ -105,7 +105,7 @@ nonisolated enum DiffHighlightMapper {
         index >= 0 && index < lines.count ? lines[index] : nil
     }
 
-    private static func plain(_ text: String) -> NSAttributedString {
-        NSAttributedString(string: text, attributes: [.font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)])
+    private static func plain(_ text: String, _ theme: DiffTheme) -> NSAttributedString {
+        NSAttributedString(string: text, attributes: [.font: theme.font])
     }
 }
