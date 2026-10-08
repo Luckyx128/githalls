@@ -4,8 +4,8 @@ Owner: Atlas (feat/jira-api). Everything below is `async throws` on `JiraClient`
 unless noted; all of it is unit tested with a mock `URLProtocol` (no network).
 `JiraClient(credentials:)` keeps working; tests inject
 `JiraClient(credentials:, session:)`. Models live in `GitHalls/Jira/`.
-Status: **planned** — names are final, phases land in order 1..5; the phase tag
-says when each call becomes available.
+Status: **shipped on feat/jira-api** (phases 1–5). Where this file and the code
+differ, the code wins; the notes at the end list the deliberate differences.
 
 ## Models (all `Equatable, Hashable, Sendable`)
 
@@ -113,3 +113,24 @@ func rank(_ issue: JiraIssue, _ position: JiraRankPosition) async -> Bool     //
 func link/unlink, setParent, watch/unwatch, vote/unvote, logWork, attach/download/deleteAttachment — same pattern
 func assignableUsers(query:, projectKey:) async throws -> [JiraUser]
 ```
+
+## As shipped — differences from the plan above
+* `JiraClient.rank(issueKey:before:after:rankFieldID:)` exists next to `rank(_:_:rankFieldID:)`.
+* `searchAssignableUsers(query:issueKey:)` (existing issue) next to `(query:projectKey:)`.
+* `labels(query:)`; `JiraViewModel.labels(matching:)`.
+* `boardIssues/sprintIssues/backlogIssues` take `storyPointsField:` (from `storyPointsFieldID()`) to fill `JiraIssue.storyPoints`.
+* `search(jql:limit:)` now follows `nextPageToken` up to `limit`; `searchPage(jql:limit:pageToken:)` is one page.
+* `JiraIssue` is also `summary`/`priority` mutable, gains `subtasks`, `links`.
+* View model shipped names (all `async -> Bool` unless noted, optimistic with rollback where the board shows the field):
+  `create(_:) -> String?`, `edit(_:_:patch:)`, `setSummary/Description/Priority/Labels/Components/DueDate/StoryPoints`,
+  `loadComments(for:)`, `addComment(to:text:)`, `editComment(on:id:text:)`, `deleteComment(on:id:)` (state: `commentsByIssue`),
+  `loadBoards(projectKey:)`, `selectBoard(_:)` (state: `boards`, `selectedBoard`, `boardConfiguration`, `sprints`),
+  `moveToSprint(_:_:)`, `moveToBacklog(_:)`, `rank(_:_:)`,
+  `link(_:_:direction:to:)`, `unlink(_:_:)`, `setParent(_:_:)`,
+  `setVote(_:on:)`, `setWatching(_:on:)`, `setWatcher(_:watching:on:)` (state: `votesByIssue`, `watchersByIssue`),
+  `logWork(on:seconds:started:comment:)`, `deleteWorklog(on:id:)` (`worklogsByIssue`),
+  `attach(to:filename:data:mimeType:)`, `download(_:)`, `deleteAttachment(on:id:)` (`attachmentsByIssue`),
+  loaders `loadVotes/loadWatchers/loadWorklogs/loadAttachments(for:)`.
+* Tests inject `JiraViewModel.clientFactory` and `JiraClient(credentials:session:)` (see `GitHallsTests/JiraMock.swift`).
+* 429: retried twice when `Retry-After` <= 30s (`maxRetries`, `maxRetryWait`); otherwise `JiraError.rateLimited`.
+* Descriptions/comments go through `JiraADF.document(from:)` = `JiraMarkdownADF` (nested plain-text lists fall back to a plain builder).

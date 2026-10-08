@@ -183,6 +183,24 @@ struct JiraLookupTests {
         #expect(mock.requests.first?.query["issueKey"] == "APP-3")
     }
 
+    @Test func emptyUserSearchAsksNothing() async throws {
+        let mock = MockJira { _ in MockReply(json: "[]") }
+        #expect(try await mock.client.searchUsers(query: "  ").isEmpty)
+        #expect(mock.requests.isEmpty)
+    }
+
+    @Test func richTextFieldsAreAdf() async throws {
+        let mock = MockJira { _ in
+            MockReply(json: """
+            {"fields":[{"fieldId":"environment","name":"Environment","schema":{"type":"string","system":"environment"}},
+                       {"fieldId":"customfield_1","name":"Notes","schema":{"type":"string","custom":"com.atlassian.jira.plugin.system.customfieldtypes:textarea"}},
+                       {"fieldId":"customfield_2","name":"Ref","schema":{"type":"string","custom":"com.atlassian.jira.plugin.system.customfieldtypes:textfield"}}]}
+            """)
+        }
+        let kinds = try await mock.client.createFields(projectKey: "APP", issueTypeID: "10").map(\.kind)
+        #expect(kinds == [.adf, .adf, .string])
+    }
+
     @Test func userSearchHitsTheSiteWideEndpoint() async throws {
         let mock = MockJira { _ in MockReply(json: #"[{"accountId":"a1","displayName":"Ana","emailAddress":"ana@acme.test"}]"#) }
         let users = try await mock.client.searchUsers(query: "ana")
@@ -275,6 +293,11 @@ struct JiraADFBuilderTests {
         let content = try #require(doc["content"] as? [[String: Any]])
         #expect(content.first?["type"] as? String == "heading")
         #expect(JiraADF.plainText(from: doc) == "Title\nSome bold text")
+    }
+
+    @Test func emptyTextIsStillAValidDocument() throws {
+        let content = try #require(JiraADF.document(from: "")["content"] as? [[String: Any]])
+        #expect(content.count == 1)
     }
 
     @Test func dashAndStarBulletsBecomeBulletLists() {

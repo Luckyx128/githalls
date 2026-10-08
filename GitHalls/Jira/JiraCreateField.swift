@@ -51,7 +51,11 @@ struct JiraCreateField: Identifiable, Equatable, Hashable, Sendable {
         let system = schema?["system"] as? String
 
         switch type {
-        case "string": return system == "description" ? .adf : .string
+        case "string":
+            // v3 takes rich-text fields as ADF: description, environment and
+            // paragraph custom fields.
+            let custom = schema?["custom"] as? String ?? ""
+            return system == "description" || system == "environment" || custom.hasSuffix(":textarea") ? .adf : .string
         case "number": return .number
         case "date": return .date
         case "datetime": return .dateTime
