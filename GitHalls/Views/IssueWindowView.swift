@@ -30,6 +30,9 @@ struct IssueWindowView: View {
     /// The outcome of the last action taken here, and whether it went wrong.
     @State private var actionResult: (message: String, failed: Bool)?
 
+    /// The priorities the site offers, for the menu. Fetched once.
+    @State private var priorities: [JiraFieldOption] = []
+
     @Environment(\.openURL) private var openURL
 
     private var isBusy: Bool { jiraViewModel.busyIssues.contains(detail.key) }
@@ -58,6 +61,9 @@ struct IssueWindowView: View {
         }
         // Re-asked whenever the issue moves: which moves are available is a
         // function of where it stands.
+        .task {
+            priorities = (try? await JiraAuthoringFactory.make().priorities()) ?? []
+        }
         .task(id: detail.status) {
             transitions = (try? await jiraViewModel.transitions(for: detail)) ?? []
         }
@@ -93,13 +99,20 @@ struct IssueWindowView: View {
                 }
             }
 
-            Text(detail.summary)
-                .font(.title3)
-                .textSelection(.enabled)
+            InlineEditText(text: detail.summary, placeholder: "Summary") { new in
+                let title = new.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard await jiraViewModel.setSummary(detail, title) else { return false }
+                detail.summary = title
+                return true
+            } display: {
+                Text(detail.summary)
+                    .font(.title3)
+                    .textSelection(.enabled)
+            }
 
             Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 4) {
                 metaRow("Type", detail.type)
-                metaRow("Priority", detail.priority ?? "—")
+                priorityRow
                 assigneeRow
                 metaRow("Reporter", detail.reporterName ?? "—")
                 metaRow("Created", formatted(detail.created))
@@ -107,14 +120,23 @@ struct IssueWindowView: View {
             }
             .font(.callout)
 
-            if !detail.labels.isEmpty {
-                HStack(spacing: 6) {
-                    ForEach(detail.labels, id: \.self) { label in
-                        Text(label)
-                            .font(.callout)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 2)
-                            .background(.quaternary, in: Capsule())
+            InlineEditText(text: detail.labels.joined(separator: " "), placeholder: "labels, space or comma separated") { new in
+                let labels = JiraCreateIssueViewModel.labels(from: new)
+                guard await jiraViewModel.setLabels(detail, labels) else { return false }
+                detail.labels = labels
+                return true
+            } display: {
+                if detail.labels.isEmpty {
+                    Text("No labels").font(.callout).foregroundStyle(.secondary)
+                } else {
+                    HStack(spacing: 6) {
+                        ForEach(detail.labels, id: \.self) { label in
+                            Text(label)
+                                .font(.callout)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 2)
+                                .background(.quaternary, in: Capsule())
+                        }
                     }
                 }
             }
@@ -188,6 +210,28 @@ struct IssueWindowView: View {
         }
     }
 
+    private var priorityRow: some View {
+        GridRow {
+            Text("Priority")
+                .foregroundStyle(.secondary)
+
+            Menu(detail.priority ?? "—") {
+                ForEach(priorities) { priority in
+                    Button(priority.label) {
+                        Task {
+                            if await jiraViewModel.setPriority(detail, priority) {
+                                detail.priority = priority.label
+                            }
+                        }
+                    }
+                }
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .disabled(isBusy || priorities.isEmpty)
+        }
+    }
+
     private func metaRow(_ label: String, _ value: String) -> some View {
         GridRow {
             Text(label)
@@ -220,11 +264,17 @@ struct IssueWindowView: View {
             } else if let description = detail.description {
                 // Empty means Jira has none, which is worth stating rather than
                 // leaving a blank box.
-                Text(description.isEmpty ? "This issue has no description." : description)
-                    .font(.callout)
-                    .foregroundStyle(description.isEmpty ? .secondary : .primary)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                InlineEditText(text: description, multiline: true) { new in
+                    guard await jiraViewModel.setDescription(detail, new) else { return false }
+                    detail.description = new.trimmingCharacters(in: .whitespacesAndNewlines)
+                    return true
+                } display: {
+                    Text(description.isEmpty ? "This issue has no description." : description)
+                        .font(.callout)
+                        .foregroundStyle(description.isEmpty ? .secondary : .primary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
         }
     }
