@@ -42,6 +42,7 @@ struct MergeBannerView: View {
                         viewModel.useEditableMergeMessage()
                     }
                     .buttonStyle(.borderless)
+                    .pointerStyle(.link)
                     .font(.callout)
                     .disabled(viewModel.mergeState?.preparedMessage == nil)
                 } else {
@@ -60,6 +61,7 @@ struct MergeBannerView: View {
                         Task { await viewModel.markAllResolved() }
                     }
                     .buttonStyle(.borderless)
+                    .pointerStyle(.link)
                     .font(.callout)
                     .disabled(viewModel.isStaging)
                 }
@@ -70,6 +72,7 @@ struct MergeBannerView: View {
                     confirmingAbort = true
                 }
                 .buttonStyle(.borderless)
+                .pointerStyle(.link)
                 .font(.callout)
                 .disabled(viewModel.isFinalizingMerge)
             }

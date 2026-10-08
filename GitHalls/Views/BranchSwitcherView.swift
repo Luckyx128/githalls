@@ -90,5 +90,6 @@ struct BranchSwitcherView: View {
             }
         }
         .buttonStyle(.plain)
+        .pointerStyle(.link)
     }
 }

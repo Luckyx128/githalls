@@ -48,6 +48,7 @@ struct GitIdentitySwitcherView: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .pointerStyle(.link)
             }
             .frame(minHeight: 120, maxHeight: 240)
 

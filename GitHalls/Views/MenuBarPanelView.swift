@@ -107,6 +107,7 @@ struct MenuBarPanelView: View {
                         .lineLimit(1)
                 }
                 .buttonStyle(.plain)
+                .pointerStyle(.link)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 3)
             }
@@ -126,6 +127,7 @@ struct MenuBarPanelView: View {
                 Image(systemName: "arrow.clockwise")
             }
             .buttonStyle(.borderless)
+            .pointerStyle(.link)
             Button("Quit") {
                 NSApplication.shared.terminate(nil)
             }

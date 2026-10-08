@@ -148,6 +148,7 @@ struct ContentView: View {
                 .padding(.horizontal, 4)
             }
             .buttonStyle(.plain)
+            .pointerStyle(.link)
             .help("Switch branch")
             .popover(isPresented: $showBranchSwitcher) {
                 BranchSwitcherView(viewModel: viewModel)

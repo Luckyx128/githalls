@@ -107,6 +107,7 @@ struct KanbanBoardView: View {
                     .font(.callout)
             }
             .buttonStyle(.plain)
+            .pointerStyle(.link)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
@@ -261,6 +262,7 @@ private struct KanbanCardView: View {
             .background(.background.secondary, in: RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
+        .pointerStyle(.link)
         .help("\(issue.key) — \(issue.summary)")
         .opacity(isBusy ? 0.5 : 1)
         .disabled(isBusy)

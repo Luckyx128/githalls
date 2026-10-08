@@ -86,6 +86,7 @@ struct CommitView: View {
                     .font(.callout)
             }
             .buttonStyle(.borderless)
+            .pointerStyle(.link)
             .popover(isPresented: $showIdentitySwitcher) {
                 GitIdentitySwitcherView(viewModel: viewModel)
             }
@@ -112,6 +113,7 @@ struct CommitView: View {
                     Image(systemName: "questionmark.circle")
                 }
                 .buttonStyle(.borderless)
+                .pointerStyle(.link)
                 .popover(isPresented: $showTypeReference) {
                     ConventionalCommitReferenceView()
                 }
@@ -179,6 +181,7 @@ struct CommitView: View {
                 Task { await viewModel.undoLastCommit() }
             }
             .buttonStyle(.borderless)
+            .pointerStyle(.link)
             .disabled(viewModel.isCommitting)
             .help("Undo the last commit and keep its changes staged")
         }
@@ -202,6 +205,7 @@ struct CommitView: View {
                     Image(systemName: "xmark.circle.fill")
                 }
                 .buttonStyle(.borderless)
+                .pointerStyle(.link)
             }
             .font(.callout)
             .foregroundStyle(.secondary)

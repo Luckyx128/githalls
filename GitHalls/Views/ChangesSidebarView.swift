@@ -96,6 +96,7 @@ struct ChangesSidebarView: View {
                 Task { await viewModel.setStaged(staged, for: group) }
             }
             .buttonStyle(.borderless)
+            .pointerStyle(.link)
             .font(.callout)
             .disabled(viewModel.isStaging)
         }
@@ -122,6 +123,7 @@ struct ChangesSidebarView: View {
                                             .lineLimit(1)
                                     }
                                     .buttonStyle(.plain)
+                                    .pointerStyle(.link)
                                     .contextMenu {
                                         Button("Remove from Recents", role: .destructive) {
                                             viewModel.forgetRecent(url)

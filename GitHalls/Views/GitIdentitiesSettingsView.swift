@@ -168,12 +168,14 @@ private struct IdentityRow: View {
                 Image(systemName: "key")
             }
             .buttonStyle(.borderless)
+            .pointerStyle(.link)
             .disabled(identity.githubUsername.isEmpty)
             .help(identity.githubUsername.isEmpty ? "Set a GitHub Username first" : "Save a Personal Access Token for this account")
             Button(role: .destructive, action: onDelete) {
                 Image(systemName: "trash")
             }
             .buttonStyle(.borderless)
+            .pointerStyle(.link)
         }
     }
 

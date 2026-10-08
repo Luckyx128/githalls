@@ -84,6 +84,7 @@ struct KanbanSidebarView: View {
                 .frame(maxWidth: .infinity)
         }
         .buttonStyle(.borderless)
+        .pointerStyle(.link)
         .padding(8)
     }
 }
