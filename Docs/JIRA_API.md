@@ -41,8 +41,8 @@ decode): `statusID`, `dueDate`, `components`, `storyPoints`, `parentKey`,
 `parentSummary`, `subtasks: [JiraIssueRef]?`, `links: [JiraIssueLink]?`.
 
 `JiraADF.document(from: String) -> [String: Any]` is the inverse of
-`JiraADF.plainText(from:)` (paragraphs, line breaks, bullet/ordered lists, code
-fences round-trip).
+`JiraADF.plainText(from:)` (paragraphs, line breaks, bullet/ordered lists, nested lists
+fences build).
 
 ## Phase 1 — create / edit / lookups
 ```swift

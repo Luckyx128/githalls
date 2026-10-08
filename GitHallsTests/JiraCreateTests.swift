@@ -270,6 +270,13 @@ struct JiraADFBuilderTests {
         #expect(roundTrip(text) == text)
     }
 
+    @Test func markdownKeepsItsFormatting() throws {
+        let doc = JiraADF.document(from: "# Title\n\nSome **bold** text")
+        let content = try #require(doc["content"] as? [[String: Any]])
+        #expect(content.first?["type"] as? String == "heading")
+        #expect(JiraADF.plainText(from: doc) == "Title\nSome bold text")
+    }
+
     @Test func dashAndStarBulletsBecomeBulletLists() {
         #expect(roundTrip("- a\n* b") == "• a\n• b")
     }
