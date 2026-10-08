@@ -54,6 +54,8 @@ struct JiraClient {
 
     /// Up to `limit` issues, following the page cursor as far as it takes.
     func search(jql: String, limit: Int = 50) async throws -> [JiraIssue] {
+        guard limit > 0 else { return [] }
+
         var issues: [JiraIssue] = []
         var token: String?
 

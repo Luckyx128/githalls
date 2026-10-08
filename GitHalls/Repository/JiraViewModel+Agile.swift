@@ -39,16 +39,21 @@ extension JiraViewModel {
 
     @discardableResult
     func moveToSprint(_ issue: JiraIssue, _ sprint: JiraSprint) async -> Bool {
-        await optimistic(issue, confirmation: "\(issue.key) moved to \(sprint.name).", patch: { $0 }, perform: { client in
+        let moved = await optimistic(issue, confirmation: "\(issue.key) moved to \(sprint.name).", patch: { $0 }, perform: { client in
             try await client.moveToSprint(sprint.id, keys: [issue.key])
         })
+        // A sprint board's membership changed; the cards say nothing of sprints, so reload.
+        if moved { invalidate() }
+        return moved
     }
 
     @discardableResult
     func moveToBacklog(_ issue: JiraIssue) async -> Bool {
-        await optimistic(issue, confirmation: "\(issue.key) moved to the backlog.", patch: { $0 }, perform: { client in
+        let moved = await optimistic(issue, confirmation: "\(issue.key) moved to the backlog.", patch: { $0 }, perform: { client in
             try await client.moveToBacklog(keys: [issue.key])
         })
+        if moved { invalidate() }
+        return moved
     }
 
     /// Ranks the issue next to another and reorders its column at once; a

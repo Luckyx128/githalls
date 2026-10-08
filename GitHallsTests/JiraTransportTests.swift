@@ -66,6 +66,12 @@ struct JiraTransportTests {
         #expect(mock.requests[0].json?["maxResults"] as? Int == 100)
     }
 
+    @Test func aNonPositiveLimitAsksNothing() async throws {
+        let mock = MockJira { _ in MockReply(json: #"{"issues":[]}"#) }
+        #expect(try await mock.client.search(jql: "x", limit: 0).isEmpty)
+        #expect(mock.requests.isEmpty)
+    }
+
     @Test func aRateLimitIsWaitedOutAndRetried() async throws {
         let counter = Counter()
         let waits = Waits()

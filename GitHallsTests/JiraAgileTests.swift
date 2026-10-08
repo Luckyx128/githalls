@@ -246,7 +246,9 @@ struct JiraViewModelAgileTests {
 
         #expect(await viewModel.moveToSprint(issue("A"), JiraSprint(id: 5, name: "S5", state: .active)))
         #expect(viewModel.actionMessage == "A moved to S5.")
+        let before = viewModel.reloadToken
         #expect(await viewModel.moveToBacklog(issue("A")))
+        #expect(viewModel.reloadToken != before)
         #expect(viewModel.actionMessage == "A moved to the backlog.")
     }
 
