@@ -33,6 +33,7 @@ struct KanbanColumnView: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .frame(maxHeight: .infinity, alignment: .top)
         .animation(motion.spring, value: isTargeted)
+        .animation(motion.spring, value: isCollapsed)
         .dropDestination(for: KanbanDragItem.self) { items, _ in
             drop(items, beforeCard: nil)
         } isTargeted: { isTargeted = $0 }
@@ -112,12 +113,13 @@ struct KanbanColumnView: View {
             Button {
                 board.toggleCollapsed(column.status)
             } label: {
-                Image(systemName: "chevron.left.to.line")
-                    .font(.callout)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
+                    .frame(width: 14, height: 14)
+                    .hoverHighlight()
             }
             .buttonStyle(.plain)
-            .pointerStyle(.link)
             .help("Collapse column")
             .accessibilityLabel("Collapse \(column.status)")
         }
@@ -155,6 +157,9 @@ struct KanbanColumnView: View {
             board.toggleCollapsed(column.status)
         } label: {
             VStack(spacing: 10) {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
                 Circle()
                     .fill(Self.color(for: column.category))
                     .frame(width: 8, height: 8)
@@ -173,7 +178,7 @@ struct KanbanColumnView: View {
         }
         .buttonStyle(.plain)
         .pointerStyle(.link)
-        .help("Expand \(column.status)")
+        .help("Expand column")
         .draggable(KanbanDragItem.column(status: column.status)) {
             Text(column.status)
                 .font(.subheadline.weight(.semibold))
