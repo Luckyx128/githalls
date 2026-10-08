@@ -1,0 +1,59 @@
+//
+//  JiraIssueAuthoring.swift
+//  GitHalls
+//
+
+import Foundation
+
+/// What the create and edit screens need from Jira. A protocol so the views and
+/// their view models are written and tested without a network; `JiraClient`
+/// conforms (Atlas's calls, see Docs/JIRA_API.md), a stub stands in until then.
+protocol JiraIssueAuthoring: Sendable {
+    func projects() async throws -> [JiraProject]
+    func issueTypes(projectKey: String) async throws -> [JiraIssueType]
+    func createFields(projectKey: String, issueTypeID: String) async throws -> [JiraCreateField]
+    func searchAssignableUsers(query: String, projectKey: String) async throws -> [JiraUser]
+    func priorities() async throws -> [JiraFieldOption]
+    /// The new issue's key.
+    func create(_ issue: JiraNewIssue) async throws -> String
+}
+
+/// Where the screens get their authoring backend. One line to change when the
+/// real client conforms.
+enum JiraAuthoringFactory {
+    static func make() -> any JiraIssueAuthoring {
+        // TODO(atlas): return JiraClient(credentials:) once it conforms.
+        StubJiraAuthoring()
+    }
+}
+
+/// Canned answers for previews, tests and the time before the real client lands.
+struct StubJiraAuthoring: JiraIssueAuthoring {
+    var projects: [JiraProject] = [JiraProject(id: "1", key: "DEMO", name: "Demo")]
+    var types: [JiraIssueType] = [
+        JiraIssueType(id: "10", name: "Task", isSubtask: false, hierarchyLevel: 0),
+        JiraIssueType(id: "11", name: "Sub-task", isSubtask: true, hierarchyLevel: -1)
+    ]
+    var fields: [JiraCreateField] = []
+    var users: [JiraUser] = []
+    var failure: Error?
+
+    func projects() async throws -> [JiraProject] { projects }
+    func issueTypes(projectKey: String) async throws -> [JiraIssueType] { types }
+    func createFields(projectKey: String, issueTypeID: String) async throws -> [JiraCreateField] { fields }
+
+    func searchAssignableUsers(query: String, projectKey: String) async throws -> [JiraUser] {
+        users.filter { query.isEmpty || $0.displayName.localizedCaseInsensitiveContains(query) }
+    }
+
+    func priorities() async throws -> [JiraFieldOption] {
+        ["Highest", "High", "Medium", "Low", "Lowest"].enumerated().map {
+            JiraFieldOption(id: String($0.offset + 1), label: $0.element)
+        }
+    }
+
+    func create(_ issue: JiraNewIssue) async throws -> String {
+        if let failure { throw failure }
+        return "\(issue.projectKey)-1"
+    }
+}
