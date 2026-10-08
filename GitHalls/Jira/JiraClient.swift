@@ -37,7 +37,8 @@ struct JiraClient {
     /// What the issue window shows on top of the card.
     private static let detailFields = [
         "summary", "status", "issuetype", "priority", "updated", "created",
-        "assignee", "reporter", "labels", "description", "duedate", "components", "parent"
+        "assignee", "reporter", "labels", "description", "duedate", "components", "parent",
+        "subtasks", "issuelinks"
     ]
 
     func myself() async throws -> (accountID: String, displayName: String) {
@@ -230,7 +231,9 @@ struct JiraClient {
             components: (fields["components"] as? [[String: Any]])?.compactMap { $0["name"] as? String },
             storyPoints: storyPointsField.flatMap { fields[$0] as? Double },
             parentKey: (fields["parent"] as? [String: Any])?["key"] as? String,
-            parentSummary: ((fields["parent"] as? [String: Any])?["fields"] as? [String: Any])?["summary"] as? String
+            parentSummary: ((fields["parent"] as? [String: Any])?["fields"] as? [String: Any])?["summary"] as? String,
+            subtasks: (fields["subtasks"] as? [[String: Any]])?.compactMap { JiraIssueRef(json: $0) },
+            links: (fields["issuelinks"] as? [[String: Any]])?.compactMap { JiraIssueLink(json: $0) }
         )
     }
 
