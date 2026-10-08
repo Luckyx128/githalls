@@ -33,11 +33,19 @@ struct ChangesSidebarView: View {
     /// behaves differently depending on which one it landed in would be a bug
     /// waiting to happen.
     @ViewBuilder
-    private func row(_ change: FileChange) -> some View {
+    private func row(_ change: FileChange, side: DiffSide) -> some View {
         FileChangeRow(change: change, isDisabled: viewModel.isStaging) {
-            Task { await viewModel.toggleStage(for: change) }
+            Task {
+                // A partly staged file has a row in each section; the row
+                // clicked says which way it goes, not the file's overall state.
+                if change.isPartiallyStaged {
+                    await viewModel.setStaged(side == .unstaged, for: [change])
+                } else {
+                    await viewModel.toggleStage(for: change)
+                }
+            }
         }
-        .tag(change.id)
+        .tag(RepositoryViewModel.sidebarTag(change.id, side: side))
         .contextMenu {
             // Resolving is what a conflicted file needs first, so it leads.
             if change.status == .unmerged {
@@ -149,12 +157,12 @@ struct ChangesSidebarView: View {
                         conflictBanner
                     }
 
-                    List(selection: $viewModel.selectedChangeID) {
+                    List(selection: $viewModel.sidebarSelection) {
                         // Conflicts lead: nothing else in the list can be
                         // committed until they are gone.
                         if !viewModel.conflictedChanges.isEmpty {
                             Section {
-                                ForEach(viewModel.conflictedChanges) { row($0) }
+                                ForEach(viewModel.conflictedChanges) { row($0, side: .unstaged) }
                             } header: {
                                 Text("Conflicts")
                             }
@@ -162,7 +170,7 @@ struct ChangesSidebarView: View {
 
                         if !viewModel.stagedChanges.isEmpty {
                             Section {
-                                ForEach(viewModel.stagedChanges) { row($0) }
+                                ForEach(viewModel.stagedChanges) { row($0, side: .staged) }
                             } header: {
                                 sectionHeader("Staged", count: viewModel.stagedChanges.count,
                                               action: "Unstage All", staged: false,
@@ -172,7 +180,7 @@ struct ChangesSidebarView: View {
 
                         if !viewModel.unstagedChanges.isEmpty {
                             Section {
-                                ForEach(viewModel.unstagedChanges) { row($0) }
+                                ForEach(viewModel.unstagedChanges) { row($0, side: .unstaged) }
                             } header: {
                                 sectionHeader("Unstaged", count: viewModel.unstagedChanges.count,
                                               action: "Stage All", staged: true,
@@ -188,7 +196,7 @@ struct ChangesSidebarView: View {
                 CommitView(viewModel: viewModel)
             }
         }
-        .onChange(of: viewModel.selectedChangeID) {
+        .onChange(of: viewModel.sidebarSelection) {
             Task { await viewModel.loadDiff() }
         }
         .alert(
@@ -240,10 +248,14 @@ struct FileChangeRow: View {
 
     var body: some View {
         HStack {
-            Toggle("", isOn: Binding(
-                get: { change.isStaged},
-                set: {_ in onToggleStage() }
-            ))
+            // A file staged in part shows the dash, the way a folder of
+            // half-ticked children does.
+            Toggle(sources: Binding(
+                get: { change.isPartiallyStaged ? [true, false] : [change.isStaged] },
+                set: { _ in onToggleStage() }
+            ), isOn: \.self) {
+                EmptyView()
+            }
             .toggleStyle(.checkbox)
             .labelsHidden()
             .disabled(isDisabled)

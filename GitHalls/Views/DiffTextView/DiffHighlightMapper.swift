@@ -15,6 +15,9 @@ nonisolated struct HighlightedDiffLine {
     let oldLineNumber: Int?
     let newLineNumber: Int?
     let rawText: String
+    /// UTF-16 ranges of `content` holding the words that changed inside a
+    /// paired +/- line; the builder tints them.
+    var wordRanges: [Range<Int>] = []
 }
 
 nonisolated struct HighlightedDiff {
@@ -39,11 +42,13 @@ nonisolated enum DiffHighlightMapper {
         var mapped: [HighlightedDiffLine] = []
         mapped.reserveCapacity(diff.lines.count)
 
-        for line in diff.lines {
+        let wordRanges = Self.wordRanges(for: diff)
+
+        for (lineIndex, line) in diff.lines.enumerated() {
             switch line.kind {
-            case .hunkHeader:
+            case .hunkHeader, .expander:
                 mapped.append(HighlightedDiffLine(
-                    kind: .hunkHeader,
+                    kind: line.kind,
                     content: NSAttributedString(string: line.text),
                     oldLineNumber: nil,
                     newLineNumber: nil,
@@ -67,7 +72,8 @@ nonisolated enum DiffHighlightMapper {
                     content: content,
                     oldLineNumber: nil,
                     newLineNumber: line.newLineNumber,
-                    rawText: line.text
+                    rawText: line.text,
+                    wordRanges: wordRanges[lineIndex] ?? []
                 ))
                 newIndex += 1
             case .deletion:
@@ -77,7 +83,8 @@ nonisolated enum DiffHighlightMapper {
                     content: content,
                     oldLineNumber: line.oldLineNumber,
                     newLineNumber: nil,
-                    rawText: line.text
+                    rawText: line.text,
+                    wordRanges: wordRanges[lineIndex] ?? []
                 ))
                 oldIndex += 1
             }
@@ -87,6 +94,30 @@ nonisolated enum DiffHighlightMapper {
     }
 
     // MARK: - Helpers
+
+    /// Past this many lines the word comparison is skipped altogether: a diff
+    /// that big is being skimmed, not read word by word.
+    static let wordDiffLineLimit = 6000
+
+    /// Changed words per line index, hunk by hunk, so a run of deletions is
+    /// never paired with additions from the next hunk.
+    private static func wordRanges(for diff: FileDiff) -> [Int: [Range<Int>]] {
+        guard diff.lines.count <= wordDiffLineLimit else { return [:] }
+        var result: [Int: [Range<Int>]] = [:]
+        var start = 0
+        while start < diff.lines.count {
+            var end = start
+            let hunk = diff.lines[start].hunkIndex
+            while end < diff.lines.count, diff.lines[end].hunkIndex == hunk { end += 1 }
+            if hunk != nil {
+                let slice = diff.lines[start..<end]
+                let pairs = WordDiff.pairs(kinds: slice.map(\.kind), texts: slice.map(\.text))
+                for (offset, ranges) in pairs { result[start + offset] = ranges }
+            }
+            start = end
+        }
+        return result
+    }
 
     private static func highlight(_ raw: [String],
                                   language: String?,

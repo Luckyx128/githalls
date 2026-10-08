@@ -20,6 +20,13 @@ struct DiffTextViewRepresentable: NSViewRepresentable {
     let diff: FileDiff
     let presentation: DiffPresentation
     let colorScheme: ColorScheme
+    /// Hunk buttons and line selection; nil where the diff is read-only.
+    var interaction: DiffInteraction?
+    /// Same value for the same file, side and settings: a diff that comes back
+    /// under the same key is a refresh and keeps its scroll position.
+    var placeIdentity: String?
+    /// A click on an expander row: which gap, and which way.
+    var onExpand: ((Int, ExpanderRow.Direction) -> Void)?
 
     // Reading the settings here makes SwiftUI call updateNSView whenever they change.
     @AppStorage(CodeAppearance.lightThemeKey) private var lightThemeName = CodeAppearance.defaultLightTheme
@@ -46,7 +53,8 @@ struct DiffTextViewRepresentable: NSViewRepresentable {
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
-        context.coordinator.update(diff: diff, theme: theme, presentation: presentation)
+        context.coordinator.update(diff: diff, theme: theme, presentation: presentation,
+                                   interaction: interaction, placeIdentity: placeIdentity, onExpand: onExpand)
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSScrollView, context: Context) -> CGSize? {
@@ -75,6 +83,12 @@ final class DiffTextCoordinator: NSObject, DiffTextViewContext {
 
     private(set) var builtDiffText: BuiltDiffText?
     private(set) var currentFilePath: String?
+    /// The diff `builtDiffText` was made from — not the newest one handed to
+    /// `update`, which may still be rendering. Rows and lines match one to one.
+    private(set) var currentDiff: FileDiff?
+    private(set) var interaction: DiffInteraction?
+    private(set) var expandHandler: ((Int, ExpanderRow.Direction) -> Void)?
+    private var placeIdentity: String?
 
     private var heightCache: [String: CGFloat] = [:]
 
@@ -125,19 +139,45 @@ final class DiffTextCoordinator: NSObject, DiffTextViewContext {
         scrollView.documentView = textView
         scrollView.findBarPosition = .aboveContent
 
+        // Content scrolling under a still pointer moves the hovered hunk header.
+        scrollView.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(self, selector: #selector(clipBoundsChanged),
+                                               name: NSView.boundsDidChangeNotification,
+                                               object: scrollView.contentView)
+
         self.scrollView = scrollView
         self.textView = textView
         return scrollView
     }
 
+    @objc private func clipBoundsChanged() {
+        textView?.refreshHover()
+    }
+
     // MARK: - Content updates
 
-    func update(diff: FileDiff, theme: DiffTextTheme, presentation: DiffPresentation) {
+    func update(diff: FileDiff, theme: DiffTextTheme, presentation: DiffPresentation,
+                interaction: DiffInteraction?, placeIdentity: String? = nil,
+                onExpand: ((Int, ExpanderRow.Direction) -> Void)? = nil) {
         guard let textView else { return }
+        expandHandler = onExpand
+
+        // The same file and side coming back with new content is a refresh
+        // after an action — keep the reader where they were.
+        let identity = placeIdentity ?? interaction?.identity
+        let keepsPlace = identity != nil && identity == (self.placeIdentity ?? self.interaction?.identity)
+        self.placeIdentity = placeIdentity
+        let modeChanged = interaction?.mode != self.interaction?.mode || interaction?.side != self.interaction?.side
+        self.interaction = interaction
+        interaction?.selection.onChange = { [weak textView] in textView?.needsDisplay = true }
 
         let key = Self.renderKey(diff: diff, theme: theme)
         if key == renderKey, self.theme.identity == theme.identity {
             applyScrollerPolicy(for: presentation)
+            if modeChanged {
+                textView.window?.invalidateCursorRects(for: textView)
+                textView.refreshHover()
+            }
             return
         }
 
@@ -155,7 +195,7 @@ final class DiffTextCoordinator: NSObject, DiffTextViewContext {
         switch presentation {
         case .intrinsic:
             let built = Self.compute(diff: diff, theme: theme, highlighter: highlighter)
-            apply(built)
+            apply(built, diff: diff, keepingPlace: false)
         case .fill:
             let token = UUID()
             renderToken = token
@@ -163,7 +203,7 @@ final class DiffTextCoordinator: NSObject, DiffTextViewContext {
                 let built = Self.compute(diff: diff, theme: theme, highlighter: highlighter)
                 await MainActor.run { [weak self] in
                     guard let self, self.renderToken == token else { return }
-                    self.apply(built)
+                    self.apply(built, diff: diff, keepingPlace: keepsPlace)
                 }
             }
         }
@@ -176,19 +216,36 @@ final class DiffTextCoordinator: NSObject, DiffTextViewContext {
         return DiffAttributedBuilder.build(highlighted, theme: theme)
     }
 
-    private func apply(_ built: BuiltDiffText) {
+    private func apply(_ built: BuiltDiffText, diff: FileDiff, keepingPlace: Bool) {
         guard let textView else { return }
 
+        // Read before the text is replaced: afterwards there is nothing to measure.
+        let anchor = keepingPlace ? textView.scrollAnchor() : nil
+
         builtDiffText = built
+        currentDiff = diff
         heightCache.removeAll()
         textView.textStorage?.setAttributedString(built.attributedString)
 
-        if let scrollView {
+        var restored = false
+        if let anchor {
+            restored = textView.restore(anchor)
+        }
+        if restored {
+            // A short fade tells the eye the content changed without moving.
+            textView.alphaValue = 0.5
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.18
+                textView.animator().alphaValue = 1
+            }
+        } else if let scrollView {
             textView.scroll(NSPoint(x: 0, y: 0))
             scrollView.reflectScrolledClipView(scrollView.contentView)
         }
         textView.invalidateIntrinsicContentSize()
         textView.needsDisplay = true
+        textView.window?.invalidateCursorRects(for: textView)
+        textView.refreshHover()
     }
 
     private func applyScrollerPolicy(for presentation: DiffPresentation) {
@@ -245,6 +302,8 @@ final class DiffTextCoordinator: NSObject, DiffTextViewContext {
         for line in diff.lines {
             hasher.combine(line.kind)
             hasher.combine(line.text)
+            hasher.combine(line.oldLineNumber)
+            hasher.combine(line.newLineNumber)
         }
         hasher.combine(theme.identity)
         return "\(diff.path)#\(hasher.finalize())"

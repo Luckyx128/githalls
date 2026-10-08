@@ -41,6 +41,92 @@ final class RepositoryViewModel {
     var currentDiff: FileDiff?
     var isLoadingDiff = false
 
+    /// Which half of the selected file the diff shows. Only a partly staged
+    /// file has two; the sidebar sets it with the row that was clicked.
+    var selectedDiffSide: DiffSide = .unstaged
+
+    /// Lines picked in the diff gutter. Owned here, not by the view, so a
+    /// reload or an action can clear it without the view's help.
+    let diffSelection = DiffSelection()
+
+    /// A line or hunk discard waiting for its confirmation. The patch is built
+    /// when it is asked for, so the dialog and the action agree on what goes.
+    var pendingLineDiscard: PendingLineDiscard?
+
+    private var loadedDiffKey: String?
+
+    static let ignoreWhitespaceKey = "diff.ignoreWhitespace"
+
+    /// Show the diff with `-w`. Persisted; flipping it reloads the diff. While
+    /// on, partial staging is off: a patch cannot be made from a diff that
+    /// pretends blank changes are not there.
+    var ignoreWhitespace: Bool = UserDefaults.standard.bool(forKey: RepositoryViewModel.ignoreWhitespaceKey) {
+        didSet {
+            guard ignoreWhitespace != oldValue else { return }
+            UserDefaults.standard.set(ignoreWhitespace, forKey: Self.ignoreWhitespaceKey)
+            diffSelection.clear()
+            Task { await loadDiff() }
+        }
+    }
+
+    /// Whitespace is hidden, and so the staging this file would otherwise offer is off.
+    var isStagingBlockedByWhitespace: Bool {
+        guard ignoreWhitespace, let change = selectedChange, let diff = currentDiff else { return false }
+        return change.status != .untracked && diff.partialMode(for: change, side: selectedDiffSide) != nil
+    }
+
+    // MARK: Expandable context
+
+    /// The new side of the file on screen, line by line, for the rows between hunks.
+    private var contextSource: [String]?
+    private var contextExpansion = ContextExpansion()
+    private var contextGeneration = 0
+    @ObservationIgnored private var displayCache: (key: String, diff: FileDiff)?
+    private static let contextSourceByteLimit = 4_000_000
+
+    /// The diff as shown: the real one plus any context the reader opened and
+    /// the rows that open more. Never what staging reads — that is `currentDiff`.
+    func displayDiff(for diff: FileDiff) -> FileDiff {
+        guard contextSource != nil else { return diff }
+        let key = "\(contextGeneration)|\(diff.path)|\(diff.lines.count)"
+        if let displayCache, displayCache.key == key { return displayCache.diff }
+        let built = ContextExpander.display(diff: diff, source: contextSource, expansion: contextExpansion)
+        displayCache = (key, built)
+        return built
+    }
+
+    func expandContext(gap: Int, _ direction: ExpanderRow.Direction) {
+        contextExpansion.reveal(gap: gap, direction)
+        contextGeneration += 1
+        diffSelection.anchor = nil
+    }
+
+    private func resetContext(source: [String]?) {
+        contextSource = source
+        contextExpansion = ContextExpansion()
+        contextGeneration += 1
+    }
+
+    /// Reads the file from where the new side of this diff lives: the working
+    /// tree for the unstaged half, the index for the staged one.
+    private func loadContextSource(for change: FileChange, side: DiffSide, diff: FileDiff) async -> [String]? {
+        guard !diff.isBinary, !diff.isNewFile, !diff.isDeletedFile, diff.hunkCount > 0,
+              change.status != .untracked, let repositoryURL
+        else { return nil }
+
+        let data: Data?
+        if side == .staged, change.status != .unmerged {
+            data = try? await gitService.blob(at: repositoryURL, revision: "", path: change.path)
+        } else {
+            let url = repositoryURL.appending(path: change.path)
+            data = await Task.detached { try? Data(contentsOf: url) }.value
+        }
+        guard let data, data.count <= Self.contextSourceByteLimit,
+              let text = String(data: data, encoding: .utf8)
+        else { return nil }
+        return FileDiff.sourceLines(of: text)
+    }
+
     var selectedChange: FileChange? {
         changes.first { $0.id == selectedChangeID }
     }
@@ -254,6 +340,7 @@ final class RepositoryViewModel {
             headCommit = head
             if head == nil || !(head!.isRewritable) { isAmending = false }
             changes = newChanges
+            reconcileDiffSide()
             currentBranch = branch
             await loadReadmeIfNeeded(at: repositoryURL, branch: branch)
             currentIdentity = identity
@@ -281,25 +368,44 @@ final class RepositoryViewModel {
     func loadDiff() async {
             guard let repositoryURL, let selectedChange else {
                 currentDiff = nil
+                loadedDiffKey = nil
                 return
             }
             let token = UUID()
             diffRequestToken = token
             isLoadingDiff = true
             defer { if diffRequestToken == token { isLoadingDiff = false } }
+            let side = selectedDiffSide
+            let change = selectedChange
+            let ignoringWhitespace = ignoreWhitespace
             do {
-                let diff = try await gitService.diff(at: repositoryURL, for: selectedChange)
+                let diff = try await gitService.diff(at: repositoryURL, for: change, side: side,
+                                                     ignoreWhitespace: ignoringWhitespace)
                 // O usuário já selecionou outro arquivo enquanto este diff carregava — ignora.
                 guard diffRequestToken == token else { return }
-                currentDiff = diff
+
+                // A reload that finds the same text (window activation, a status
+                // refresh) must not rebuild the view or drop the selection on it.
+                let key = "\(change.id)|\(side)|\(ignoringWhitespace)"
+                if currentDiff == nil || loadedDiffKey != key || !currentDiff!.hasSameContent(as: diff) {
+                    let source = await loadContextSource(for: change, side: side, diff: diff)
+                    guard diffRequestToken == token else { return }
+                    diffSelection.clear()
+                    // Opened context belongs to the stretches of this very diff:
+                    // once the hunks change, the numbers no longer mean the same gaps.
+                    resetContext(source: source)
+                    currentDiff = diff
+                }
+                loadedDiffKey = key
                 errorMessage = nil
             } catch {
                 guard diffRequestToken == token else { return }
                 currentDiff = nil
+                loadedDiffKey = nil
                 errorMessage = error.localizedDescription
             }
         }
-    
+
     /// The bytes behind a binary file, for the preview that stands in for its
     /// diff. A nil revision means the working tree — the side no revision names.
     ///
@@ -1006,15 +1112,14 @@ final class RepositoryViewModel {
 
     /// Conflicts have their own section, so they are not repeated here.
     ///
-    /// A file that is staged *and* has further edits on disk counts as staged:
-    /// one row per path is what keeps list selection sane, and its checkbox is
-    /// already ticked.
+    /// A file that is staged *and* has further edits on disk (`MM`) is in both
+    /// lists — each shows its own half of the diff, and the checkbox is mixed.
     var stagedChanges: [FileChange] {
         sortedChanges.filter { $0.isStaged && $0.status != .unmerged }
     }
 
     var unstagedChanges: [FileChange] {
-        sortedChanges.filter { !$0.isStaged && $0.status != .unmerged }
+        sortedChanges.filter { $0.hasWorktreeChanges && $0.status != .unmerged }
     }
 
     /// Stages or unstages one group, without touching the others.
@@ -1397,6 +1502,173 @@ final class RepositoryViewModel {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    // MARK: - Partial staging
+
+    enum PartialAction {
+        case stage, unstage, discard
+    }
+
+    struct PendingLineDiscard {
+        let patch: String
+        let lineCount: Int
+        let fileName: String
+    }
+
+    /// A file whose staged or unstaged half vanished (everything staged, or
+    /// everything unstaged) follows its changes to the other section instead of
+    /// being left looking at an empty diff.
+    private func reconcileDiffSide() {
+        guard let change = selectedChange, change.status != .unmerged else { return }
+        if selectedDiffSide == .unstaged, !change.hasWorktreeChanges, change.isStaged {
+            selectedDiffSide = .staged
+        } else if selectedDiffSide == .staged, !change.isStaged, change.hasWorktreeChanges {
+            selectedDiffSide = .unstaged
+        }
+    }
+
+    /// Row tags for the sidebar list: a partly staged file has two rows with
+    /// the same file id, so the id alone cannot say which one is selected.
+    var sidebarSelection: String? {
+        get { selectedChangeID.map { Self.sidebarTag($0, side: selectedDiffSide) } }
+        set {
+            guard let newValue else {
+                selectedChangeID = nil
+                return
+            }
+            if newValue.hasPrefix("staged:") {
+                selectedDiffSide = .staged
+                selectedChangeID = String(newValue.dropFirst("staged:".count))
+            } else {
+                selectedDiffSide = .unstaged
+                selectedChangeID = String(newValue.dropFirst("unstaged:".count))
+            }
+        }
+    }
+
+    static func sidebarTag(_ id: FileChange.ID, side: DiffSide) -> String {
+        (side == .staged ? "staged:" : "unstaged:") + id
+    }
+
+    /// What the diff pane may do with the diff on screen, or nil for none.
+    func diffInteraction(for diff: FileDiff) -> DiffInteraction? {
+        guard let change = selectedChange,
+              let mode = diff.partialMode(for: change, side: selectedDiffSide),
+              !isStagingBlockedByWhitespace
+        else { return nil }
+
+        let wholeFile = mode == .wholeFile
+        return DiffInteraction(
+            side: selectedDiffSide,
+            mode: mode,
+            selection: diffSelection,
+            canDiscard: change.status != .untracked && !wholeFile,
+            identity: "\(change.id)|\(selectedDiffSide)",
+            onStageHunk: { [weak self] header in
+                guard let self else { return }
+                Task { await self.perform(.stage, lines: self.hunkLines(header)) }
+            },
+            onUnstageHunk: { [weak self] header in
+                guard let self else { return }
+                Task { await self.perform(.unstage, lines: self.hunkLines(header)) }
+            },
+            onDiscardHunk: { [weak self] header in
+                guard let self else { return }
+                self.requestLineDiscard(self.hunkLines(header))
+            }
+        )
+    }
+
+    private func hunkLines(_ headerIndex: Int) -> Set<Int> {
+        guard let diff = currentDiff, diff.lines.indices.contains(headerIndex),
+              let hunk = diff.lines[headerIndex].hunkIndex
+        else { return [] }
+        return diff.changedLineIndices(inHunk: hunk)
+    }
+
+    func stageSelectedLines() async { await perform(.stage, lines: diffSelection.lines) }
+    func unstageSelectedLines() async { await perform(.unstage, lines: diffSelection.lines) }
+    func requestDiscardSelectedLines() { requestLineDiscard(diffSelection.lines) }
+
+    private func requestLineDiscard(_ lines: Set<Int>) {
+        guard let diff = currentDiff, let change = selectedChange, !lines.isEmpty, !isStagingBlockedByWhitespace,
+              let patch = PatchBuilder.build(diff: diff, selected: lines, direction: .reverse)
+        else { return }
+        pendingLineDiscard = PendingLineDiscard(patch: patch, lineCount: lines.count, fileName: change.fileName)
+    }
+
+    func cancelLineDiscard() {
+        pendingLineDiscard = nil
+    }
+
+    func confirmLineDiscard() async {
+        guard let pending = pendingLineDiscard else { return }
+        pendingLineDiscard = nil
+        await applyChange(wholeFileStage: nil) { service, url in
+            try await service.applyPatch(at: url, patch: pending.patch, cached: false, reverse: true)
+        }
+    }
+
+    /// Stages, unstages or discards `lines` of the diff on screen.
+    private func perform(_ action: PartialAction, lines: Set<Int>) async {
+        guard let diff = currentDiff, let change = selectedChange, !lines.isEmpty, !isStagingBlockedByWhitespace,
+              let mode = diff.partialMode(for: change, side: selectedDiffSide)
+        else { return }
+
+        if mode == .wholeFile {
+            // One hunk *is* the file, so the hunk's button is the file's checkbox.
+            switch action {
+            case .stage: await applyChange(wholeFileStage: (change.path, true)) { _, _ in }
+            case .unstage: await applyChange(wholeFileStage: (change.path, false)) { _, _ in }
+            case .discard: break
+            }
+            return
+        }
+
+        let direction: PatchBuilder.Direction = action == .stage ? .forward : .reverse
+        guard let patch = PatchBuilder.build(diff: diff, selected: lines, direction: direction) else { return }
+
+        await applyChange(wholeFileStage: nil) { service, url in
+            try await service.applyPatch(at: url, patch: patch, cached: action != .discard, reverse: action != .stage)
+        }
+    }
+
+    /// Runs one git change, then brings status and the diff up to date without
+    /// letting go of the open file: the diff is swapped in place (the view keeps
+    /// its scroll position) and the selection is dropped.
+    private func applyChange(wholeFileStage: (path: String, stage: Bool)?,
+                     _ work: @escaping (GitService, URL) async throws -> Void) async {
+        guard let repositoryURL, !isStaging else { return }
+        isStaging = true
+        defer { isStaging = false }
+
+        var failure: String?
+        do {
+            if let wholeFileStage {
+                if wholeFileStage.stage {
+                    try await gitService.stage(at: repositoryURL, path: wholeFileStage.path)
+                } else {
+                    try await gitService.unstage(at: repositoryURL, path: wholeFileStage.path)
+                }
+            } else {
+                try await work(gitService, repositoryURL)
+            }
+            diffSelection.clear()
+        } catch {
+            failure = error.localizedDescription
+        }
+
+        await refreshStatus()
+        if selectedChange == nil {
+            // Nothing left of this file to show.
+            selectedChangeID = nil
+            currentDiff = nil
+            loadedDiffKey = nil
+        } else {
+            await loadDiff()
+        }
+        if let failure { errorMessage = failure }
     }
 }
 

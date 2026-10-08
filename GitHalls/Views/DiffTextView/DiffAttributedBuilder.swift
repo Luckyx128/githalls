@@ -15,6 +15,8 @@ extension NSAttributedString.Key {
 }
 
 nonisolated struct DiffLineLayoutInfo {
+    /// Position in `FileDiff.lines`, which the line selection is keyed on.
+    let index: Int
     let kind: DiffLine.Kind
     let oldNumber: Int?
     let newNumber: Int?
@@ -113,14 +115,28 @@ nonisolated enum DiffAttributedBuilder {
             if line.kind == .hunkHeader {
                 piece.addAttribute(.font, value: theme.headerFont, range: pieceRange)
                 piece.addAttribute(.foregroundColor, value: theme.hunkHeaderText, range: pieceRange)
+            } else if line.kind == .expander {
+                piece.addAttribute(.font, value: theme.headerFont, range: pieceRange)
+                piece.addAttribute(.foregroundColor, value: theme.selectionBar, range: pieceRange)
             } else {
                 fillMissing(.font, in: piece, range: pieceRange, value: theme.font)
                 fillMissing(.foregroundColor, in: piece, range: pieceRange, value: theme.baseText)
             }
 
+            // Background only, so it sits under the syntax colours and over
+            // the line tint, and the selection tint (drawn first) shows through.
+            if !line.wordRanges.isEmpty, line.content.length == line.rawText.utf16.count {
+                let color = line.kind == .addition ? theme.additionWordBackground : theme.deletionWordBackground
+                for range in line.wordRanges where range.upperBound <= line.content.length {
+                    piece.addAttribute(.backgroundColor, value: color,
+                                       range: NSRange(location: range.lowerBound, length: range.count))
+                }
+            }
+
             output.append(piece)
 
             lines.append(DiffLineLayoutInfo(
+                index: index,
                 kind: line.kind,
                 oldNumber: line.oldLineNumber,
                 newNumber: line.newLineNumber,

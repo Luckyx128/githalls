@@ -32,6 +32,16 @@ extension FileChange {
         return components.dropLast().joined(separator: "/")
     }
 
+    /// Edits on disk that the index does not have yet — untracked files count.
+    var hasWorktreeChanges: Bool {
+        guard status != .unmerged else { return false }
+        return worktreeStatus != " "
+    }
+
+    /// Staged and also edited since: git status prints it as `MM`, and it
+    /// belongs in both sections of the list.
+    var isPartiallyStaged: Bool { isStaged && hasWorktreeChanges }
+
     var isStaged: Bool {
         // A conflicted file carries an index letter, but nothing about it is
         // staged until it is resolved — showing it ticked would be a lie.

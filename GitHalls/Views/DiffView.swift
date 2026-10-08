@@ -10,6 +10,9 @@ import SwiftUI
 struct DiffView: View {
     let diff: FileDiff
     var presentation: DiffPresentation = .fill
+    var interaction: DiffInteraction?
+    var placeIdentity: String?
+    var onExpand: ((Int, ExpanderRow.Direction) -> Void)?
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -17,7 +20,10 @@ struct DiffView: View {
         DiffTextViewRepresentable(
             diff: diff,
             presentation: presentation,
-            colorScheme: colorScheme
+            colorScheme: colorScheme,
+            interaction: interaction,
+            placeIdentity: placeIdentity,
+            onExpand: onExpand
         )
     }
 }

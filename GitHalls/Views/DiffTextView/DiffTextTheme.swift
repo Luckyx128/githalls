@@ -38,9 +38,15 @@ nonisolated struct DiffTextTheme {
     let hunkHeaderBackground: NSColor
     let additionBackground: NSColor
     let deletionBackground: NSColor
+    /// Behind the words that changed inside a changed line.
+    let additionWordBackground: NSColor
+    let deletionWordBackground: NSColor
+    let expanderBackground: NSColor
     let gutterBackground: NSColor
     let gutterText: NSColor
     let gutterSeparator: NSColor
+    let selectionTint: NSColor
+    let selectionBar: NSColor
     let additionMarker: NSColor
     let deletionMarker: NSColor
 
@@ -56,6 +62,7 @@ nonisolated struct DiffTextTheme {
         case .addition: additionBackground
         case .deletion: deletionBackground
         case .hunkHeader: hunkHeaderBackground
+        case .expander: expanderBackground
         case .context: nil
         }
     }
@@ -95,6 +102,13 @@ nonisolated struct DiffTextTheme {
             ? NSColor(srgbRed: 0.35, green: 0.55, blue: 1.0, alpha: 0.16)
             : NSColor(srgbRed: 0.20, green: 0.45, blue: 0.90, alpha: 0.09)
 
+        let additionWord = isDark
+            ? NSColor(srgbRed: 0.30, green: 0.85, blue: 0.40, alpha: 0.38)
+            : NSColor(srgbRed: 0.22, green: 0.72, blue: 0.30, alpha: 0.34)
+        let deletionWord = isDark
+            ? NSColor(srgbRed: 1.0, green: 0.35, blue: 0.35, alpha: 0.38)
+            : NSColor(srgbRed: 0.90, green: 0.24, blue: 0.24, alpha: 0.30)
+
         return DiffTextTheme(
             scheme: scheme,
             isDark: isDark,
@@ -104,9 +118,14 @@ nonisolated struct DiffTextTheme {
             hunkHeaderBackground: hunk,
             additionBackground: addition,
             deletionBackground: deletion,
+            additionWordBackground: additionWord,
+            deletionWordBackground: deletionWord,
+            expanderBackground: hunk.withAlphaComponent(hunk.alphaComponent * 0.6),
             gutterBackground: blend(background, text, 0.05),
             gutterText: blend(background, text, 0.45),
             gutterSeparator: blend(background, text, 0.14),
+            selectionTint: NSColor.controlAccentColor.withAlphaComponent(isDark ? 0.20 : 0.16),
+            selectionBar: NSColor.controlAccentColor,
             additionMarker: isDark ? NSColor(srgbRed: 0.40, green: 0.85, blue: 0.45, alpha: 1)
                                    : NSColor(srgbRed: 0.16, green: 0.60, blue: 0.24, alpha: 1),
             deletionMarker: isDark ? NSColor(srgbRed: 1.0, green: 0.45, blue: 0.45, alpha: 1)

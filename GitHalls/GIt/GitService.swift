@@ -210,7 +210,14 @@ extension GitService {
 }
 
 extension GitService {
-    func diff(at repoURL: URL, for change: FileChange) async throws -> FileDiff {
+    /// `side` picks which half of a partly staged file to show: the staged half
+    /// is index against HEAD, the unstaged half is working tree against index.
+    /// A conflicted file has no such split and keeps the single diff against HEAD.
+    ///
+    /// `ignoreWhitespace` passes `-w`. Such a diff is for reading only: a patch
+    /// made from it would not apply to a file whose blanks it pretends are equal.
+    func diff(at repoURL: URL, for change: FileChange, side: DiffSide = .unstaged,
+              ignoreWhitespace: Bool = false) async throws -> FileDiff {
         guard change.status != .untracked else {
             let fileURL = repoURL.appending(path: change.path)
 
@@ -228,11 +235,56 @@ extension GitService {
             return DiffParser.syntheticAllAdditions(path: change.path, content: content)
         }
 
-        let result = try await run(["diff", "--no-color", "HEAD", "--", change.path], in: repoURL)
+        var arguments = ["diff", "--no-color"]
+        if ignoreWhitespace { arguments.append("-w") }
+        if change.status == .unmerged {
+            arguments += ["HEAD", "--", change.path]
+        } else if side == .staged {
+            // Naming the old path as well lets git see a rename as one.
+            arguments += ["--cached", "-M", "--"] + [change.originalPath, change.path].compactMap { $0 }
+        } else {
+            arguments += ["--", change.path]
+        }
+
+        let result = try await run(arguments, in: repoURL)
         guard result.terminationStatus == 0 else {
             throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
         }
-        return DiffParser.parse(result.standardOutput)
+        let parsed = DiffParser.parse(result.standardOutput)
+        if ignoreWhitespace, parsed.lines.isEmpty {
+            // Everything that changed was blank space, which -w hides.
+            return FileDiff(path: change.path,
+                            lines: [DiffLine(kind: .hunkHeader, text: "Only whitespace changes",
+                                             oldLineNumber: nil, newLineNumber: nil)])
+        }
+        return parsed
+    }
+}
+
+extension GitService {
+    /// Applies a patch built by `PatchBuilder`.
+    ///
+    /// - `cached` + forward stages lines; `cached` + `reverse` unstages them;
+    ///   `reverse` alone throws the lines away from the working tree.
+    ///
+    /// The patch goes through a temporary file rather than stdin: git can bail
+    /// out on a bad header before reading all of it, and writing into a pipe
+    /// nobody reads any more kills the process with SIGPIPE.
+    func applyPatch(at repoURL: URL, patch: String, cached: Bool, reverse: Bool) async throws {
+        let fileURL = FileManager.default.temporaryDirectory
+            .appending(path: "githalls-\(UUID().uuidString).patch")
+        try Data(patch.utf8).write(to: fileURL)
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+
+        var arguments = ["apply", "--recount", "--whitespace=nowarn"]
+        if cached { arguments.append("--cached") }
+        if reverse { arguments.append("--reverse") }
+        arguments.append(fileURL.path)
+
+        let result = try await run(arguments, in: repoURL)
+        guard result.terminationStatus == 0 else {
+            throw GitError.commandFailed(exitCode: result.terminationStatus, message: result.standardError)
+        }
     }
 }
 

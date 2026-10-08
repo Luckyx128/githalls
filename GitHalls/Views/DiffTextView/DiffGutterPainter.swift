@@ -60,7 +60,7 @@ struct DiffGutterPainter {
 
     /// Draws the numbers and the +/- marker for one line, in view coordinates.
     func drawRow(_ info: DiffLineLayoutInfo, in rowRect: NSRect) {
-        guard info.kind != .hunkHeader else { return }
+        guard info.kind != .hunkHeader, info.kind != .expander else { return }
 
         let attributes: [NSAttributedString.Key: Any] = [
             .font: theme.headerFont,

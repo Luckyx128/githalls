@@ -58,12 +58,33 @@ struct ChangeGroupingTests {
         #expect(model.unstagedChanges.map(\.path) == ["new.txt", "unstaged.txt"])
     }
 
-    /// A file staged with further edits on disk belongs to one row, not two.
-    @Test func partiallyStagedFileCountsAsStaged() {
+    /// A file staged with further edits on disk (`MM`) has a row in each section.
+    @Test func partiallyStagedFileAppearsInBothGroups() {
         let model = viewModel("MM both.txt\n")
 
         #expect(model.stagedChanges.map(\.path) == ["both.txt"])
+        #expect(model.unstagedChanges.map(\.path) == ["both.txt"])
+        #expect(model.changes[0].isPartiallyStaged)
+    }
+
+    @Test func fullyStagedFileIsNotPartial() {
+        let model = viewModel("M  done.txt\n")
+
+        #expect(!model.changes[0].isPartiallyStaged)
         #expect(model.unstagedChanges.isEmpty)
+    }
+
+    /// Two rows share one file id, so the list tags them by side.
+    @Test func sidebarSelectionRemembersWhichSection() {
+        let model = viewModel("MM both.txt\n")
+
+        model.sidebarSelection = RepositoryViewModel.sidebarTag("both.txt", side: .staged)
+
+        #expect(model.selectedChangeID == "both.txt")
+        #expect(model.selectedDiffSide == .staged)
+
+        model.sidebarSelection = RepositoryViewModel.sidebarTag("both.txt", side: .unstaged)
+        #expect(model.selectedDiffSide == .unstaged)
     }
 
     /// Conflicts get their own section, so neither group may claim them.
