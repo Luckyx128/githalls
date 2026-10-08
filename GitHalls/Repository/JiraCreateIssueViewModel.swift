@@ -50,10 +50,18 @@ final class JiraCreateIssueViewModel {
 
     init(authoring: any JiraIssueAuthoring, projectKey: String? = nil) {
         self.authoring = authoring
-        self.preferredProjectKey = projectKey
+        // The board's project when there is one; otherwise the last one used.
+        self.preferredProjectKey = projectKey ?? Self.lastProjectKey
     }
 
     private let preferredProjectKey: String?
+
+    private static let lastProjectKeyDefaults = "jira.createIssue.lastProjectKey"
+
+    static var lastProjectKey: String? {
+        get { UserDefaults.standard.string(forKey: lastProjectKeyDefaults) }
+        set { UserDefaults.standard.set(newValue, forKey: lastProjectKeyDefaults) }
+    }
 
     // MARK: - Loading
 
@@ -176,6 +184,7 @@ final class JiraCreateIssueViewModel {
 
         do {
             let key = try await authoring.create(draft)
+            Self.lastProjectKey = draft.projectKey
             errorMessage = nil
             return key
         } catch {

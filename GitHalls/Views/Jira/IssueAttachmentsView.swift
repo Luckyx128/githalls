@@ -94,11 +94,19 @@ struct IssueAttachmentsView: View {
     }
 
     private func save(_ attachment: JiraAttachment) async {
+        // Ask where first: nobody wants a download they then cancel.
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = attachment.filename
+        let response = await withCheckedContinuation { continuation in
+            panel.begin { continuation.resume(returning: $0) }
+        }
+        guard response == .OK, let url = panel.url else { return }
+
+        isWorking = true
+        defer { isWorking = false }
         do {
-            let data = try await jiraViewModel.download(attachment)
-            let panel = NSSavePanel()
-            panel.nameFieldStringValue = attachment.filename
-            if panel.runModal() == .OK, let url = panel.url { try data.write(to: url) }
+            try await jiraViewModel.download(attachment).write(to: url)
+            errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
         }

@@ -114,6 +114,12 @@ final class JiraViewModel {
     /// How many cards the query returned, before any filter.
     var issueCount: Int { groups.reduce(0) { $0 + $1.count } }
 
+    /// The project the board is about, read from every card the query returned —
+    /// not the filtered columns, which a text filter can empty.
+    var boardProjectKey: String? {
+        JiraQuickCreate.projectKey(from: groups.flatMap(\.issues).map(\.key))
+    }
+
     var shownCount: Int { columns.reduce(0) { $0 + $1.count } }
 
     // MARK: - Queries

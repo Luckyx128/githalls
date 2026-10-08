@@ -36,7 +36,7 @@ final class JiraQuickCreate {
         let title = summary.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty, !isCreating else { return nil }
 
-        guard let projectKey = Self.projectKey(from: board.columns.flatMap(\.issues).map(\.key)) else {
+        guard let projectKey = board.boardProjectKey else {
             errorMessage = "No project to create in yet."
             return nil
         }

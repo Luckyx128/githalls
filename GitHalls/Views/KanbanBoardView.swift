@@ -30,7 +30,7 @@ struct KanbanBoardView: View {
         }
         .sheet(isPresented: $isCreating) {
             CreateIssueSheet(jiraViewModel: viewModel,
-                             projectKey: JiraQuickCreate.projectKey(from: viewModel.columns.flatMap(\.issues).map(\.key)))
+                             projectKey: viewModel.boardProjectKey)
         }
         // One task, not one per trigger: two of them both fire on appear and
         // the board would ask Jira the same question twice.

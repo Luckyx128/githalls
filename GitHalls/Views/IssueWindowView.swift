@@ -340,6 +340,15 @@ struct IssueWindowView: View {
                     .foregroundStyle(.secondary)
             }
 
+            HStack {
+                Button("Link Pull Request") { Task { await linkPullRequest() } }
+                    .disabled(repositoryViewModel.repositoryURL == nil || isBusy)
+                    .help("Comments the open pull request of the checked-out branch on this issue.")
+                Text("Posts the open PR of the current branch as a comment.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+
             if let actionResult {
                 Label(actionResult.message,
                       systemImage: actionResult.failed ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
@@ -347,6 +356,28 @@ struct IssueWindowView: View {
                     .foregroundStyle(actionResult.failed ? Color.red : Color.secondary)
                     .padding(.top, 2)
             }
+        }
+    }
+
+    private func linkPullRequest() async {
+        actionResult = nil
+
+        guard let pullRequest = await repositoryViewModel.openPullRequest() else {
+            actionResult = ("No open pull request for the branch checked out. Create one first.", true)
+            return
+        }
+
+        // The thread may not have been opened yet; the check needs it.
+        try? await jiraViewModel.loadComments(for: detail.key)
+        if JiraPullRequestLink.isLinked(pullRequest, in: jiraViewModel.commentsByIssue[detail.key] ?? []) {
+            actionResult = ("PR #\(pullRequest.number) is already linked to \(detail.key).", false)
+            return
+        }
+
+        if await jiraViewModel.addComment(to: detail.key, text: JiraPullRequestLink.commentText(for: pullRequest)) {
+            actionResult = ("Linked PR #\(pullRequest.number) to \(detail.key).", false)
+        } else {
+            actionResult = (jiraViewModel.actionMessage ?? "Jira refused the comment.", true)
         }
     }
 
