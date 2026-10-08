@@ -41,7 +41,8 @@ struct JiraSettingsView: View {
             }
         }
         .padding(20)
-        .frame(width: 420)
+        .frame(width: SettingsLayout.width)
+        .frame(minHeight: SettingsLayout.minHeight)
     }
 
     private func testAndSave() async {

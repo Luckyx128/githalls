@@ -16,6 +16,7 @@ struct GeneralSettingsView: View {
                 .foregroundStyle(.secondary)
         }
         .formStyle(.grouped)
-        .frame(width: 420)
+        .frame(width: SettingsLayout.width)
+        .frame(minHeight: SettingsLayout.minHeight)
     }
 }

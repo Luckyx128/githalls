@@ -28,7 +28,7 @@ struct GitIdentitiesSettingsView: View {
             }
             .padding(20)
         }
-        .frame(width: 460, height: 560)
+        .frame(width: SettingsLayout.width, height: SettingsLayout.minHeight + 40)
     }
 
     // MARK: - Saved Identities
