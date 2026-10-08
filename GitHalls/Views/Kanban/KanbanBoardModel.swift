@@ -1,0 +1,171 @@
+//
+//  KanbanBoardModel.swift
+//  GitHalls
+//
+
+import Foundation
+import Observation
+
+/// A drop that more than one move can satisfy: the person has to say which.
+struct KanbanMoveChoice: Identifiable, Equatable {
+    let issue: JiraIssue
+    let options: [JiraTransition]
+
+    var id: String { issue.key }
+}
+
+/// What the board does with a drag, kept apart from `JiraViewModel` so the
+/// request layer stays free of layout and animation concerns.
+///
+/// A dropped card moves at once and Jira is asked afterwards. The move lives
+/// here as an overlay — `JiraViewModel` still holds the truth — so a refusal
+/// removes the overlay and the card is simply where it always was.
+@Observable
+@MainActor
+final class KanbanBoardModel {
+    private let jira: JiraViewModel
+    private let store: KanbanLayoutStore
+
+    private(set) var layout = KanbanColumnLayout()
+    private var layoutQueryID: String?
+
+    /// Cards already shown in their new column, by key.
+    private var pending: [String: (status: String, category: String)] = [:]
+
+    /// Set when several moves lead to the dropped-on column.
+    var choice: KanbanMoveChoice?
+
+    /// Bumped per refused key; the card shakes when its own count changes.
+    private(set) var shakes: [String: Int] = [:]
+
+    init(jira: JiraViewModel, store: KanbanLayoutStore = KanbanLayoutStore()) {
+        self.jira = jira
+        self.store = store
+    }
+
+    // MARK: - Columns
+
+    /// Every column in the person's order, with in-flight moves applied.
+    var allColumns: [JiraIssueGroup] {
+        syncLayout()
+        return layout.ordered(applyingPending(to: jira.columns))
+    }
+
+    var visibleColumns: [JiraIssueGroup] { allColumns.filter { !layout.hidden.contains($0.status) } }
+
+    private func applyingPending(to groups: [JiraIssueGroup]) -> [JiraIssueGroup] {
+        guard !pending.isEmpty else { return groups }
+
+        var result = groups.map { group in
+            JiraIssueGroup(status: group.status, category: group.category,
+                           issues: group.issues.filter { pending[$0.key] == nil })
+        }
+
+        for issue in groups.flatMap(\.issues) {
+            guard let target = pending[issue.key] else { continue }
+
+            var moved = issue
+            moved.status = target.status
+            moved.statusCategory = target.category
+
+            if let index = result.firstIndex(where: { $0.status == target.status }) {
+                result[index] = JiraIssueGroup(status: target.status, category: result[index].category,
+                                               issues: result[index].issues + [moved])
+            } else {
+                result.append(JiraIssueGroup(status: target.status, category: target.category, issues: [moved]))
+            }
+        }
+        return result
+    }
+
+    /// Reads the layout in for the query on screen. Not observation-visible
+    /// state until it changes, so loading from a getter is safe.
+    private func syncLayout() {
+        let id = jira.selectedQuery.id
+        guard layoutQueryID != id else { return }
+
+        layoutQueryID = id
+        layout = store.load(id)
+    }
+
+    private func mutateLayout(_ change: (inout KanbanColumnLayout) -> Void) {
+        syncLayout()
+        change(&layout)
+        store.save(layout, for: jira.selectedQuery.id)
+    }
+
+    func moveColumn(_ status: String, onto target: String) {
+        let groups = allColumns
+        mutateLayout { $0.move(status, onto: target, within: groups) }
+    }
+
+    func shiftColumn(_ status: String, by offset: Int) {
+        let groups = allColumns
+        mutateLayout { $0.shift(status, by: offset, within: groups) }
+    }
+
+    func toggleCollapsed(_ status: String) { mutateLayout { $0.toggleCollapsed(status) } }
+    func toggleHidden(_ status: String) { mutateLayout { $0.toggleHidden(status) } }
+
+    // MARK: - Cards
+
+    func issue(forKey key: String) -> JiraIssue? {
+        allColumns.lazy.flatMap(\.issues).first { $0.key == key }
+    }
+
+    /// A card dropped on a column. Returns whether the drop was understood, which
+    /// is all a drop target gets to say.
+    @discardableResult
+    func drop(cardKey key: String, onto status: String) -> Bool {
+        guard let issue = issue(forKey: key) else { return false }
+        guard issue.status != status else { return true }
+
+        Task { await requestMove(issue, to: status) }
+        return true
+    }
+
+    private func requestMove(_ issue: JiraIssue, to status: String) async {
+        let transitions: [JiraTransition]
+        do {
+            transitions = try await jira.transitions(for: issue)
+        } catch {
+            refuse(issue, error.localizedDescription)
+            return
+        }
+
+        let options = transitions.filter { $0.toStatus == status }
+
+        switch options.count {
+        case 0:
+            refuse(issue, "\(issue.key) can't move to \(status) from \(issue.status).")
+        case 1:
+            await perform(issue, options[0])
+        default:
+            choice = KanbanMoveChoice(issue: issue, options: options)
+        }
+    }
+
+    /// Runs a transition the person picked from the choice dialog.
+    func choose(_ transition: JiraTransition) {
+        guard let issue = choice?.issue else { return }
+
+        choice = nil
+        Task { await perform(issue, transition) }
+    }
+
+    private func perform(_ issue: JiraIssue, _ transition: JiraTransition) async {
+        pending[issue.key] = (transition.toStatus, transition.toStatusCategory)
+
+        let succeeded = await jira.move(issue, to: transition)
+
+        pending[issue.key] = nil
+        if !succeeded { shakes[issue.key, default: 0] += 1 }
+    }
+
+    /// Nothing was optimistic yet, so there is nothing to undo: say why, shake.
+    private func refuse(_ issue: JiraIssue, _ message: String) {
+        jira.actionFailed = true
+        jira.actionMessage = message
+        shakes[issue.key, default: 0] += 1
+    }
+}

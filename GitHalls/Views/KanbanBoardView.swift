@@ -11,6 +11,14 @@ struct KanbanBoardView: View {
     @Bindable var viewModel: JiraViewModel
 
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    @State private var board: KanbanBoardModel
+
+    init(viewModel: JiraViewModel) {
+        self.viewModel = viewModel
+        _board = State(initialValue: KanbanBoardModel(jira: viewModel))
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -20,7 +28,7 @@ struct KanbanBoardView: View {
                 actionBanner(actionMessage)
             }
 
-            if viewModel.columns.isEmpty {
+            if board.allColumns.isEmpty {
                 emptyState
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -29,6 +37,17 @@ struct KanbanBoardView: View {
         }
         // One task, not one per trigger: two of them both fire on appear and
         // the board would ask Jira the same question twice.
+        .confirmationDialog(
+            "Move \(board.choice?.issue.key ?? "")",
+            isPresented: Binding(get: { board.choice != nil }, set: { if !$0 { board.choice = nil } }),
+            presenting: board.choice
+        ) { choice in
+            ForEach(choice.options) { option in
+                Button("\(option.name) → \(option.toStatus)") { board.choose(option) }
+            }
+        } message: { choice in
+            Text("Several moves lead to \(choice.options[0].toStatus). Which one?")
+        }
         .task(id: Reload(token: viewModel.reloadToken, isConfigured: viewModel.isConfigured)) {
             guard viewModel.isConfigured else { return }
             await viewModel.refresh()
@@ -63,6 +82,8 @@ struct KanbanBoardView: View {
                 .frame(width: 200)
                 .disabled(viewModel.issueCount == 0)
 
+            columnsMenu
+
             Button {
                 Task { await viewModel.refresh() }
             } label: {
@@ -76,6 +97,24 @@ struct KanbanBoardView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+    }
+
+    /// Which columns the board shows; hidden ones come back from here.
+    private var columnsMenu: some View {
+        Menu {
+            ForEach(board.allColumns) { column in
+                Toggle(column.status, isOn: Binding(
+                    get: { !board.layout.hidden.contains(column.status) },
+                    set: { _ in board.toggleHidden(column.status) }
+                ))
+            }
+        } label: {
+            Image(systemName: "rectangle.split.3x1")
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .disabled(board.allColumns.isEmpty)
+        .help("Show or hide columns")
     }
 
     private var countLabel: String {
@@ -121,12 +160,19 @@ struct KanbanBoardView: View {
     private var columns: some View {
         ScrollView(.horizontal) {
             HStack(alignment: .top, spacing: 12) {
-                ForEach(viewModel.columns) { column in
-                    KanbanColumnView(column: column, viewModel: viewModel) { issue in
+                ForEach(board.visibleColumns) { column in
+                    KanbanColumnView(
+                        column: column,
+                        viewModel: viewModel,
+                        board: board,
+                        isCollapsed: board.layout.collapsed.contains(column.status)
+                    ) { issue in
                         openWindow(id: "issue", value: issue)
                     }
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
                 }
             }
+            .animation(KanbanMotion(reduced: reduceMotion).spring, value: board.visibleColumns.map(\.status))
             .padding(.horizontal, 12)
             .padding(.bottom, 12)
         }
@@ -160,171 +206,5 @@ struct KanbanBoardView: View {
                                   : "Run the query to see your issues.")
             )
         }
-    }
-}
-
-/// One status column: a header, then its cards, scrolling on their own.
-private struct KanbanColumnView: View {
-    let column: JiraIssueGroup
-    @Bindable var viewModel: JiraViewModel
-    let onOpen: (JiraIssue) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(Self.color(for: column.category))
-                    .frame(width: 8, height: 8)
-                Text(column.status)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-                Spacer()
-                Text("\(column.count)")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 1)
-                    .background(.quaternary, in: Capsule())
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-
-            ScrollView {
-                LazyVStack(spacing: 8) {
-                    ForEach(column.issues) { issue in
-                        KanbanCardView(issue: issue, viewModel: viewModel) { onOpen(issue) }
-                    }
-
-                    if column.issues.isEmpty {
-                        Text("Nothing here")
-                            .font(.callout)
-                            .foregroundStyle(.tertiary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 4)
-                    }
-                }
-                .padding(8)
-            }
-        }
-        .frame(width: 280)
-        .frame(maxHeight: .infinity, alignment: .top)
-        .background(Color.gray.opacity(0.05))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.gray.opacity(0.2)))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-    }
-
-    /// Jira's three categories, in the colours the app already uses for state.
-    static func color(for category: String) -> Color {
-        switch category {
-        case "done": .green
-        case "indeterminate": .blue
-        default: .secondary
-        }
-    }
-}
-
-/// KEY · type · priority, the title, and who has it. Right-click moves it.
-private struct KanbanCardView: View {
-    let issue: JiraIssue
-    @Bindable var viewModel: JiraViewModel
-    let onOpen: () -> Void
-
-    /// Cancelled when the pointer leaves, so crossing the board asks Jira nothing.
-    @State private var hoverTask: Task<Void, Never>?
-
-    private var isBusy: Bool { viewModel.busyIssues.contains(issue.key) }
-
-    var body: some View {
-        Button(action: onOpen) {
-            VStack(alignment: .leading, spacing: 5) {
-                Text(issue.summary)
-                    .font(.rowPrimary)
-                    .lineLimit(3)
-                    .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                Text(metaLine)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                if let assignee = issue.assigneeName {
-                    Text(assignee)
-                        .font(.callout)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-            .padding(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.background.secondary, in: RoundedRectangle(cornerRadius: 6))
-        }
-        .buttonStyle(.plain)
-        .pointerStyle(.link)
-        .help("\(issue.key) — \(issue.summary)")
-        .opacity(isBusy ? 0.5 : 1)
-        .disabled(isBusy)
-        .onHover(perform: prefetchOnRest)
-        .contextMenu { menu }
-    }
-
-    /// A right-click has to be instant, and a macOS menu cannot be filled in
-    /// after it opens — so the moves are fetched while the pointer rests on the
-    /// card, which is what always precedes the right-click. One request per card
-    /// actually pointed at, and the cache makes a second look free.
-    private func prefetchOnRest(_ hovering: Bool) {
-        hoverTask?.cancel()
-
-        guard hovering else {
-            hoverTask = nil
-            return
-        }
-
-        hoverTask = Task {
-            // A pointer crossing the board is not a request for anything.
-            try? await Task.sleep(for: .milliseconds(250))
-            guard !Task.isCancelled else { return }
-
-            await viewModel.prefetchTransitions(for: issue)
-        }
-    }
-
-    @ViewBuilder
-    private var menu: some View {
-        Button("Open Issue", action: onOpen)
-
-        if let transitions = viewModel.cachedTransitions(for: issue) {
-            if transitions.isEmpty {
-                Button("No moves available") {}.disabled(true)
-            } else {
-                ForEach(transitions) { transition in
-                    Button(moveTitle(transition, among: transitions)) {
-                        Task { await viewModel.move(issue, to: transition) }
-                    }
-                }
-            }
-        } else {
-            Button("Loading moves…") {}.disabled(true)
-        }
-
-        if let mine = viewModel.myAccountID, issue.assigneeAccountID == mine {
-            Button("Assigned to you") {}.disabled(true)
-        } else {
-            Button("Assign to me") {
-                Task { await viewModel.assignToMe(issue) }
-            }
-        }
-    }
-
-    /// The ellipsis is Jira's own convention for "this one asks for more".
-    private func moveTitle(_ transition: JiraTransition, among all: [JiraTransition]) -> String {
-        "Move to " + JiraWorkflow.label(for: transition, among: all) + (transition.hasScreen ? "…" : "")
-    }
-
-    /// The key first, since it is what people say out loud.
-    private var metaLine: String {
-        [issue.key, issue.type, issue.priority].compactMap { $0 }.joined(separator: " · ")
     }
 }
