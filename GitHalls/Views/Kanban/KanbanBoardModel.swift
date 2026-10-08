@@ -25,6 +25,7 @@ struct KanbanMoveChoice: Identifiable, Equatable {
 final class KanbanBoardModel {
     private let jira: JiraViewModel
     private let store: KanbanLayoutStore
+    private let ranker: any KanbanRanking
 
     private(set) var layout = KanbanColumnLayout()
     private var layoutQueryID: String?
@@ -38,9 +39,13 @@ final class KanbanBoardModel {
     /// Bumped per refused key; the card shakes when its own count changes.
     private(set) var shakes: [String: Int] = [:]
 
-    init(jira: JiraViewModel, store: KanbanLayoutStore = KanbanLayoutStore()) {
+    /// Card order a drag has already made, by status, until Jira answers.
+    private var localOrder: [String: [String]] = [:]
+
+    init(jira: JiraViewModel, store: KanbanLayoutStore = KanbanLayoutStore(), ranker: (any KanbanRanking)? = nil) {
         self.jira = jira
         self.store = store
+        self.ranker = ranker ?? KanbanRankingUnavailable(jira: jira)
     }
 
     // MARK: - Columns
@@ -54,6 +59,15 @@ final class KanbanBoardModel {
     var visibleColumns: [JiraIssueGroup] { allColumns.filter { !layout.hidden.contains($0.status) } }
 
     private func applyingPending(to groups: [JiraIssueGroup]) -> [JiraIssueGroup] {
+        var groups = groups
+        if !localOrder.isEmpty {
+            groups = groups.map { group in
+                guard let keys = localOrder[group.status], Set(keys) == Set(group.issues.map(\.key)) else { return group }
+
+                let byKey = Dictionary(uniqueKeysWithValues: group.issues.map { ($0.key, $0) })
+                return JiraIssueGroup(status: group.status, category: group.category, issues: keys.compactMap { byKey[$0] })
+            }
+        }
         guard !pending.isEmpty else { return groups }
 
         var result = groups.map { group in
@@ -116,12 +130,31 @@ final class KanbanBoardModel {
     /// A card dropped on a column. Returns whether the drop was understood, which
     /// is all a drop target gets to say.
     @discardableResult
-    func drop(cardKey key: String, onto status: String) -> Bool {
+    func drop(cardKey key: String, onto status: String, before target: String? = nil) -> Bool {
         guard let issue = issue(forKey: key) else { return false }
-        guard issue.status != status else { return true }
+
+        guard issue.status != status else {
+            if let target { Task { await reorder(issue, before: target) } }
+            return true
+        }
 
         Task { await requestMove(issue, to: status) }
         return true
+    }
+
+    private func reorder(_ issue: JiraIssue, before target: String) async {
+        guard let column = allColumns.first(where: { $0.status == issue.status }) else { return }
+
+        let keys = column.issues.map(\.key)
+        let reordered = KanbanOrdering.moving(issue.key, before: target, in: keys)
+        guard reordered != keys, let request = KanbanOrdering.request(for: issue.key, in: reordered) else { return }
+
+        localOrder[issue.status] = reordered
+        let succeeded = await ranker.rank(request)
+
+        // Success: the view model now holds the order itself.
+        localOrder[issue.status] = nil
+        if !succeeded { shakes[issue.key, default: 0] += 1 }
     }
 
     private func requestMove(_ issue: JiraIssue, to status: String) async {

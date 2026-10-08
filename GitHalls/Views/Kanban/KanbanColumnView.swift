@@ -176,8 +176,8 @@ struct KanbanColumnView: View {
     // MARK: - Drops and menus
 
     /// Cards and columns both land on a column; which one it was decides what
-    /// happens. The card goes to this status, wherever in the column it was
-    /// dropped — ranking inside a column is Jira's, not ours, until it is wired.
+    /// happens. The card goes to this status; dropped on a card of its own
+    /// column, it is ranked just before that card.
     private func drop(_ items: [KanbanDragItem], beforeCard: String?) -> Bool {
         targetedCard = nil
 
@@ -185,7 +185,7 @@ struct KanbanColumnView: View {
 
         switch item {
         case .card(let key):
-            return board.drop(cardKey: key, onto: column.status)
+            return board.drop(cardKey: key, onto: column.status, before: beforeCard)
         case .column(let status):
             board.moveColumn(status, onto: column.status)
             return true

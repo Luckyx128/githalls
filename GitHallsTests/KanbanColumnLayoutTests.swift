@@ -80,3 +80,21 @@ struct KanbanColumnLayoutTests {
         #expect(store.load("b") == KanbanColumnLayout())
     }
 }
+
+struct KanbanOrderingTests {
+    @Test func movingPutsTheCardJustBeforeTheTarget() {
+        #expect(KanbanOrdering.moving("A", before: "C", in: ["A", "B", "C"]) == ["B", "A", "C"])
+        #expect(KanbanOrdering.moving("C", before: "A", in: ["A", "B", "C"]) == ["C", "A", "B"])
+    }
+
+    @Test func movingOntoItselfOrAStrangerChangesNothing() {
+        #expect(KanbanOrdering.moving("A", before: "A", in: ["A", "B"]) == ["A", "B"])
+        #expect(KanbanOrdering.moving("A", before: "Z", in: ["A", "B"]) == ["A", "B"])
+    }
+
+    @Test func rankingAgainstTheNextCardOrThePreviousAtTheEnd() {
+        #expect(KanbanOrdering.request(for: "A", in: ["A", "B"]) == KanbanRankRequest(issueKey: "A", before: "B", after: nil))
+        #expect(KanbanOrdering.request(for: "B", in: ["A", "B"]) == KanbanRankRequest(issueKey: "B", before: nil, after: "A"))
+        #expect(KanbanOrdering.request(for: "A", in: ["A"]) == nil)
+    }
+}
