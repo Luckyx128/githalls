@@ -68,6 +68,12 @@ final class JiraViewModel {
     /// Comments by issue key, as loaded or as just written.
     var commentsByIssue: [String: [JiraComment]] = [:]
 
+    /// Agile boards. `boardConfiguration` maps columns to status ids.
+    var boards: [JiraBoard] = []
+    var selectedBoard: JiraBoard?
+    var boardConfiguration: JiraBoardConfiguration?
+    var sprints: [JiraSprint] = []
+
     var actionMessage: String?
     var actionFailed = false
 
