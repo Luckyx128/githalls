@@ -81,6 +81,8 @@ struct IssueCommentsView: View {
                         }
                     }
                     .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .help("Save the edit (⌘Return)")
                     .disabled(editText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             } else {
@@ -117,7 +119,8 @@ struct IssueCommentsView: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.return, modifiers: .command)
+                // Hands ⌘Return to the Save of a comment being edited.
+                .keyboardShortcut(editingID == nil ? KeyboardShortcut(.return, modifiers: .command) : nil)
                 .help("Post the comment (⌘Return)")
                 .disabled(isPosting || newComment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 if isPosting { ProgressView().controlSize(.small) }
