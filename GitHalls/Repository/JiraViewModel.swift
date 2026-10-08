@@ -65,6 +65,9 @@ final class JiraViewModel {
     /// Nil until asked; the inner nil means the site has no such field.
     var storyPointsFieldCache: String??
 
+    /// Comments by issue key, as loaded or as just written.
+    var commentsByIssue: [String: [JiraComment]] = [:]
+
     var actionMessage: String?
     var actionFailed = false
 

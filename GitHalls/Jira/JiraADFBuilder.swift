@@ -6,6 +6,17 @@
 import Foundation
 
 extension JiraADF {
+    /// Text to ADF for descriptions and comments: markdown where there is any
+    /// (headings, quotes, fences, bold / italic / code / links), plain text
+    /// otherwise. See `JiraMarkdownADF`.
+    static func document(from text: String) -> [String: Any] {
+        // Nested lists are the one thing `plainText` writes that the markdown
+        // reader has no notion of, and an edit of an existing description must
+        // not flatten them. Until it learns nesting, such text takes the plain path.
+        let hasNestedList = text.range(of: "(?m)^ +([•*-]|\\d+\\.) ", options: .regularExpression) != nil
+        return hasNestedList ? plainDocument(from: text) : JiraMarkdownADF.document(from: text)
+    }
+
     /// The way back from `plainText(from:)`: plain text to an ADF document.
     ///
     /// Blank lines separate paragraphs, a single newline is a line break inside
@@ -13,7 +24,7 @@ extension JiraADF {
     /// (two spaces of indent nest a level — the same shape `plainText` writes),
     /// and a ``` fence makes a code block. `plainText(from: document(from: t))`
     /// returns `t` for text made of those pieces.
-    static func document(from text: String) -> [String: Any] {
+    static func plainDocument(from text: String) -> [String: Any] {
         var blocks: [[String: Any]] = []
         var paragraph: [String] = []
         var items: [ListLine] = []
