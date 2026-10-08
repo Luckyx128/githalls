@@ -13,7 +13,7 @@ import Foundation
 /// SwiftUI restores that window across launches from the encoded value.
 struct JiraIssue: Identifiable, Equatable, Hashable, Codable {
     let key: String
-    let summary: String
+    var summary: String
 
     /// `var`, unlike the rest: a move rewrites these two on the board copy
     /// rather than costing a second search to find out where the card landed.
@@ -21,7 +21,7 @@ struct JiraIssue: Identifiable, Equatable, Hashable, Codable {
     var statusCategory: String
 
     let type: String
-    let priority: String?
+    var priority: String?
     let updated: Date
 
     // MARK: - Detail fields
@@ -40,6 +40,21 @@ struct JiraIssue: Identifiable, Equatable, Hashable, Codable {
     /// Format. `nil` means "not fetched yet", `""` means Jira has none — the
     /// window shows the two differently.
     var description: String?
+
+    // MARK: - Planning fields
+    //
+    // Optional, never defaulted arrays: a window restored from an older launch
+    // decodes without these keys, and nil also says "not fetched".
+
+    /// The status id, which is what a board column lists (names can repeat).
+    var statusID: String?
+
+    /// `yyyy-MM-dd`.
+    var dueDate: String?
+    var components: [String]?
+    var storyPoints: Double?
+    var parentKey: String?
+    var parentSummary: String?
 
     var id: String { key }
 

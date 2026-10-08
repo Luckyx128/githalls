@@ -38,11 +38,11 @@ final class JiraViewModel {
     var hasSearched = false
 
     /// The last result, unfiltered, so a filter change costs no request.
-    private var groups: [JiraIssueGroup] = []
+    var groups: [JiraIssueGroup] = []
 
     /// Same guard the git loads use: a slow answer to a query the user has
     /// moved on from must not replace what is on screen.
-    private var searchToken = UUID()
+    var searchToken = UUID()
 
     /// The moves already fetched, and the status they were fetched for. Which
     /// moves an issue can make is a function of where it stands, so a card that
@@ -50,7 +50,7 @@ final class JiraViewModel {
     private var transitionsCache: [String: (status: String, transitions: [JiraTransition])] = [:]
 
     /// Issues with a write in flight: one at a time each, and the board greys them.
-    private(set) var busyIssues: Set<String> = []
+    var busyIssues: Set<String> = []
 
     /// The account id an assign needs. Nil means "not asked yet", which is why a
     /// menu reads it rather than awaiting it.
@@ -62,12 +62,35 @@ final class JiraViewModel {
     /// What the last write did, or why it didn't. Not `errorMessage`: that one
     /// is the board's empty state, which is hidden whenever there are columns —
     /// precisely when a write happens.
+    /// Nil until asked; the inner nil means the site has no such field.
+    var storyPointsFieldCache: String??
+
+    /// Comments by issue key, as loaded or as just written.
+    var commentsByIssue: [String: [JiraComment]] = [:]
+
+    /// Agile boards. `boardConfiguration` maps columns to status ids.
+    var boards: [JiraBoard] = []
+    var selectedBoard: JiraBoard?
+    var boardConfiguration: JiraBoardConfiguration?
+    var sprints: [JiraSprint] = []
+
     var actionMessage: String?
     var actionFailed = false
 
     /// Which issue the message is about, so a window only shows the one that
     /// concerns it.
     private(set) var actionIssueKey: String?
+
+    /// Where the client comes from; tests hand in one wired to a mock session.
+    var clientFactory: () -> JiraClient? = {
+        JiraCredentialsStore.current.map { JiraClient(credentials: $0) }
+    }
+
+    /// The client, or the reason there is none.
+    func client() throws -> JiraClient {
+        guard let client = clientFactory() else { throw JiraCredentialsError.missing }
+        return client
+    }
 
     init() {
         queries = JiraQueryPresets.combine(custom: JiraQueryStore.load())
@@ -77,7 +100,7 @@ final class JiraViewModel {
         }
     }
 
-    var isConfigured: Bool { JiraCredentialsStore.isConfigured }
+    var isConfigured: Bool { clientFactory() != nil }
 
     /// The board: one column per status, holding only the cards that pass the filter.
     var columns: [JiraIssueGroup] { JiraIssueGrouping.filter(groups, by: filterText) }
@@ -134,7 +157,7 @@ final class JiraViewModel {
     // MARK: - Search
 
     func refresh() async {
-        guard let credentials = JiraCredentialsStore.current else {
+        guard let client = clientFactory() else {
             errorMessage = "Jira is not connected. Open Settings to connect an account."
             return
         }
@@ -144,7 +167,7 @@ final class JiraViewModel {
         isLoading = true
 
         do {
-            let issues = try await JiraClient(credentials: credentials)
+            let issues = try await client
                 .search(jql: selectedQuery.jql, limit: Self.searchLimit)
 
             guard searchToken == token else { return }
@@ -190,15 +213,11 @@ final class JiraViewModel {
 
     /// The full issue, description included. The window that asked owns the answer.
     func fetchIssue(key: String) async throws -> JiraIssue {
-        guard let credentials = JiraCredentialsStore.current else { throw JiraCredentialsError.missing }
-
-        return try await JiraClient(credentials: credentials).issue(key: key)
+        try await client().issue(key: key)
     }
 
     func browseURL(for issue: JiraIssue) -> URL? {
-        guard let credentials = JiraCredentialsStore.current else { return nil }
-
-        return JiraClient(credentials: credentials).browseURL(for: issue.key)
+        clientFactory()?.browseURL(for: issue.key)
     }
 
     /// The board's copy of an issue, for a window that wants to follow it.
@@ -215,9 +234,9 @@ final class JiraViewModel {
     func myself() async throws -> (accountID: String, displayName: String) {
         if let myselfTask { return try await myselfTask.value }
 
-        guard let credentials = JiraCredentialsStore.current else { throw JiraCredentialsError.missing }
+        let client = try client()
 
-        let task = Task { try await JiraClient(credentials: credentials).myself() }
+        let task = Task { try await client.myself() }
         myselfTask = task
 
         do {
@@ -238,9 +257,7 @@ final class JiraViewModel {
             return cached.transitions
         }
 
-        guard let credentials = JiraCredentialsStore.current else { throw JiraCredentialsError.missing }
-
-        let transitions = try await JiraClient(credentials: credentials).transitions(for: issue.key)
+        let transitions = try await client().transitions(for: issue.key)
         transitionsCache[issue.key] = (issue.status, transitions)
         return transitions
     }
@@ -347,7 +364,7 @@ final class JiraViewModel {
                        confirmation: String,
                        perform: (JiraClient) async throws -> Void,
                        apply: (JiraIssue) -> JiraIssue) async -> Bool {
-        guard let credentials = JiraCredentialsStore.current else {
+        guard let client = clientFactory() else {
             report(issue.key, JiraCredentialsError.missing.localizedDescription, failed: true)
             return false
         }
@@ -362,7 +379,7 @@ final class JiraViewModel {
         let token = searchToken
 
         do {
-            try await perform(JiraClient(credentials: credentials))
+            try await perform(client)
 
             transitionsCache[issue.key] = nil
             if searchToken == token { replace(issue.key, with: apply) }
@@ -382,7 +399,7 @@ final class JiraViewModel {
     /// The columns come from the issues present, so the last card leaving a
     /// status takes its column with it, and a card arriving at a status nobody
     /// held opens a new one. Both settle on the next refresh.
-    private func replace(_ key: String, with apply: (JiraIssue) -> JiraIssue) {
+    func replace(_ key: String, with apply: (JiraIssue) -> JiraIssue) {
         var issues = groups.flatMap(\.issues)
         guard let index = issues.firstIndex(where: { $0.key == key }) else { return }
 
@@ -390,7 +407,7 @@ final class JiraViewModel {
         groups = JiraIssueGrouping.byStatus(issues)
     }
 
-    private func report(_ issueKey: String, _ message: String, failed: Bool) {
+    func report(_ issueKey: String, _ message: String, failed: Bool) {
         actionIssueKey = issueKey
         actionFailed = failed
         actionMessage = message
