@@ -67,12 +67,18 @@ final class JiraQuickCreate {
         }
     }
 
+    /// The move that lands a card in the column. By the board's column when it
+    /// has one — a column can hold several statuses or carry its own name.
+    static func move(into status: String, from moves: [JiraTransition],
+                     using configuration: JiraBoardConfiguration?) -> JiraTransition? {
+        KanbanBoardColumns.transitions(moves, into: status, using: configuration).first
+    }
+
     private func place(_ key: String, in status: String, board: JiraViewModel) async {
         guard let issue = try? await board.fetchIssue(key: key),
               issue.status != status,
               let moves = try? await board.transitions(for: issue),
-              // By the board's column when it has one: a column can hold several statuses.
-              let move = KanbanBoardColumns.transitions(moves, into: status, using: board.boardConfiguration).first
+              let move = Self.move(into: status, from: moves, using: board.boardConfiguration)
         else { return }
 
         await board.move(issue, to: move)

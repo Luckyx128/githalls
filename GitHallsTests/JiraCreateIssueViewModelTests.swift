@@ -92,3 +92,33 @@ struct JiraCreateIssueViewModelTests {
         #expect(JiraQuickCreate.projectKey(from: []) == nil)
     }
 }
+
+@MainActor
+struct JiraQuickCreateBoardTests {
+    private func transition(_ id: String, to status: String, statusID: String) -> JiraTransition {
+        JiraTransition(id: id, name: id, toStatus: status, toStatusCategory: "indeterminate", toStatusID: statusID)
+    }
+
+    @Test func movesIntoACustomNamedColumnByStatusID() {
+        let config = JiraBoardConfiguration(boardID: 1, name: "B", columns: [
+            JiraBoardColumn(name: "Doing", statusIDs: ["3", "4"])
+        ])
+        let moves = [transition("a", to: "To Do", statusID: "1"),
+                     transition("b", to: "In Review", statusID: "4")]
+
+        // "Doing" is no status's name; the board maps it to ids 3 and 4.
+        #expect(JiraQuickCreate.move(into: "Doing", from: moves, using: config)?.id == "b")
+        #expect(JiraQuickCreate.move(into: "Doing", from: [moves[0]], using: config) == nil)
+    }
+
+    @Test func fallsBackToNameWithoutABoard() {
+        let moves = [transition("a", to: "Done", statusID: "9")]
+        #expect(JiraQuickCreate.move(into: "Done", from: moves, using: nil)?.id == "a")
+    }
+
+    @Test func projectKeyFallsBackToTheSelectedBoardWhenEmpty() {
+        let viewModel = JiraViewModel()
+        viewModel.selectedBoard = JiraBoard(id: 1, name: "B", type: "kanban", projectKey: "ABC")
+        #expect(viewModel.boardProjectKey == "ABC")
+    }
+}
