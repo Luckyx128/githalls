@@ -13,8 +13,22 @@ import Foundation
 struct JiraClient {
     let credentials: JiraCredentials
 
+    /// Tests hand in a session wired to a mock `URLProtocol`.
+    var session: URLSession = .shared
+
+    /// How many times a 429 is waited out and retried before it is reported.
+    var maxRetries = 2
+
+    /// The longest `Retry-After` worth waiting for; a longer one is the user's to see.
+    var maxRetryWait: TimeInterval = 30
+
+    /// Replaced in tests so a retry does not cost real seconds.
+    var retrySleep: @Sendable (TimeInterval) async throws -> Void = { seconds in
+        try await Task.sleep(for: .seconds(seconds))
+    }
+
     private static let searchPath = "/rest/api/3/search/jql"
-    private static let issuePath = "/rest/api/3/issue/"
+    static let issuePath = "/rest/api/3/issue/"
 
     /// Only what a card renders; asking for everything costs Jira time it
     /// doesn't need to spend.
@@ -23,7 +37,7 @@ struct JiraClient {
     /// What the issue window shows on top of the card.
     private static let detailFields = [
         "summary", "status", "issuetype", "priority", "updated", "created",
-        "assignee", "reporter", "labels", "description"
+        "assignee", "reporter", "labels", "description", "duedate", "components", "parent"
     ]
 
     func myself() async throws -> (accountID: String, displayName: String) {
@@ -47,7 +61,7 @@ struct JiraClient {
               let issues = object["issues"] as? [[String: Any]]
         else { throw JiraError.malformedResponse }
 
-        return issues.compactMap(Self.issue(from:))
+        return issues.compactMap { Self.issue(from: $0) }
     }
 
     /// One issue with its description and people, for the detail window.
@@ -118,19 +132,18 @@ struct JiraClient {
         )
     }
 
-    private static func path(for key: String, suffix: String) -> String {
+    static func path(for key: String, suffix: String) -> String {
         let escaped = key.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? key
         return issuePath + escaped + suffix
     }
 
-        func browseURL(for key: String) -> URL {
+    func browseURL(for key: String) -> URL {
         credentials.site.appendingPathComponent("browse").appendingPathComponent(key)
     }
 
     // MARK: - Transporte
 
-    private func request(path: String, method: String = "GET") -> URLRequest {
-        
+    func request(path: String, method: String = "GET") -> URLRequest {
         let url = URL(string: credentials.site.absoluteString + path) ?? credentials.site
         var request = URLRequest(url: url)
         request.httpMethod = method
@@ -141,25 +154,38 @@ struct JiraClient {
         return request
     }
 
-    private func send(_ request: URLRequest) async throws -> Any {
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse else { throw JiraError.malformedResponse }
+    /// The decoded JSON body; an empty body (204) reads as an empty object.
+    func send(_ request: URLRequest) async throws -> Any {
+        let data = try await sendData(request)
+        guard !data.isEmpty else { return [String: Any]() }
+        return try JSONSerialization.jsonObject(with: data)
+    }
 
-        switch http.statusCode {
-        case 200..<300:
-            guard !data.isEmpty else { return [String: Any]() }
-            return try JSONSerialization.jsonObject(with: data)
-        case 401, 403:
-            throw JiraError.unauthorized
-        case 429:
-            let retry = http.value(forHTTPHeaderField: "Retry-After").flatMap(TimeInterval.init)
-            throw JiraError.rateLimited(retryAfter: retry ?? 60)
-        default:
-            throw JiraError.http(status: http.statusCode, message: Self.message(from: data))
+    /// The raw body of a successful response; every failure maps to a `JiraError`.
+    func sendData(_ request: URLRequest) async throws -> Data {
+        var attempt = 0
+
+        while true {
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse else { throw JiraError.malformedResponse }
+
+            switch http.statusCode {
+            case 200..<300:
+                return data
+            case 401, 403:
+                throw JiraError.unauthorized
+            case 429:
+                let wait = http.value(forHTTPHeaderField: "Retry-After").flatMap(TimeInterval.init) ?? 60
+                guard attempt < maxRetries, wait <= maxRetryWait else { throw JiraError.rateLimited(retryAfter: wait) }
+                attempt += 1
+                try await retrySleep(wait)
+            default:
+                throw JiraError.http(status: http.statusCode, message: Self.message(from: data))
+            }
         }
     }
 
-    private static func message(from data: Data) -> String? {
+    static func message(from data: Data) -> String? {
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return nil }
         if let messages = object["errorMessages"] as? [String], let first = messages.first {
@@ -173,7 +199,7 @@ struct JiraClient {
 
     // MARK: - Decodificação
 
-    static func issue(from raw: [String: Any]) -> JiraIssue? {
+    static func issue(from raw: [String: Any], storyPointsField: String? = nil) -> JiraIssue? {
         guard let key = raw["key"] as? String,
               let fields = raw["fields"] as? [String: Any]
         else { return nil }
@@ -198,13 +224,19 @@ struct JiraClient {
             // null means Jira has no description. The window tells them apart.
             description: fields.keys.contains("description")
                 ? JiraADF.plainText(from: fields["description"])
-                : nil
+                : nil,
+            statusID: status?["id"] as? String,
+            dueDate: fields["duedate"] as? String,
+            components: (fields["components"] as? [[String: Any]])?.compactMap { $0["name"] as? String },
+            storyPoints: storyPointsField.flatMap { fields[$0] as? Double },
+            parentKey: (fields["parent"] as? [String: Any])?["key"] as? String,
+            parentSummary: ((fields["parent"] as? [String: Any])?["fields"] as? [String: Any])?["summary"] as? String
         )
     }
 
     /// O Jira manda `2026-08-07T14:02:11.123-0300`: fuso sem dois-pontos, que o
     /// `ISO8601DateFormatter` não aceita.
-    private static let timestamp: DateFormatter = {
+    static let timestamp: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
