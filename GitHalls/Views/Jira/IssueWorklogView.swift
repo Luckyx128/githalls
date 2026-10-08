@@ -89,22 +89,5 @@ struct IssueWorklogView: View {
         }
     }
 
-    /// "1d 2h 30m" → seconds; nil when nothing in it is a duration.
-    static func seconds(from text: String) -> Int? {
-        let units: [Character: Int] = ["w": 5 * 8 * 3600, "d": 8 * 3600, "h": 3600, "m": 60]
-        var total = 0
-        var number = ""
-
-        for character in text.lowercased() where !character.isWhitespace {
-            if character.isNumber {
-                number.append(character)
-            } else if let unit = units[character], let value = Int(number) {
-                total += value * unit
-                number = ""
-            } else {
-                return nil
-            }
-        }
-        return number.isEmpty && total > 0 ? total : nil
-    }
+    static func seconds(from text: String) -> Int? { JiraDuration.seconds(from: text) }
 }

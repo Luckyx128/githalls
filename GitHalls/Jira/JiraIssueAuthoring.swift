@@ -14,6 +14,8 @@ protocol JiraIssueAuthoring: Sendable {
     func createFields(projectKey: String, issueTypeID: String) async throws -> [JiraCreateField]
     func searchAssignableUsers(query: String, projectKey: String) async throws -> [JiraUser]
     func priorities() async throws -> [JiraFieldOption]
+    /// Teams for a Team field; pass the field's `autoCompleteURL`.
+    func teams(query: String, autoCompleteURL: String?) async throws -> [JiraFieldOption]
     /// The new issue's key.
     func create(_ issue: JiraNewIssue) async throws -> String
 }
@@ -37,6 +39,7 @@ struct UnconfiguredAuthoring: JiraIssueAuthoring {
     func createFields(projectKey: String, issueTypeID: String) async throws -> [JiraCreateField] { throw error }
     func searchAssignableUsers(query: String, projectKey: String) async throws -> [JiraUser] { throw error }
     func priorities() async throws -> [JiraFieldOption] { throw error }
+    func teams(query: String, autoCompleteURL: String?) async throws -> [JiraFieldOption] { throw error }
     func create(_ issue: JiraNewIssue) async throws -> String { throw error }
 }
 
@@ -49,6 +52,7 @@ struct StubJiraAuthoring: JiraIssueAuthoring {
     ]
     var fields: [JiraCreateField] = []
     var users: [JiraUser] = []
+    var teams: [JiraFieldOption] = []
     var failure: Error?
 
     func projects() async throws -> [JiraProject] { projects }
@@ -64,6 +68,8 @@ struct StubJiraAuthoring: JiraIssueAuthoring {
             JiraFieldOption(id: String($0.offset + 1), label: $0.element)
         }
     }
+
+    func teams(query: String, autoCompleteURL: String?) async throws -> [JiraFieldOption] { teams }
 
     func create(_ issue: JiraNewIssue) async throws -> String {
         if let failure { throw failure }

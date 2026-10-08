@@ -122,3 +122,120 @@ struct JiraQuickCreateBoardTests {
         #expect(viewModel.boardProjectKey == "ABC")
     }
 }
+
+@MainActor
+struct JiraCreateRequiredFieldsTests {
+    /// The shape of the bug report: Description, Team and Original Estimate
+    /// are all required by the project's create screen.
+    private func requiredStub() -> StubJiraAuthoring {
+        var stub = StubJiraAuthoring()
+        stub.fields = [
+            JiraCreateField(key: "summary", name: "Summary", required: true),
+            JiraCreateField(key: "description", name: "Description", required: true, kind: .adf),
+            JiraCreateField(key: "customfield_team", name: "Team", required: true, kind: .team),
+            JiraCreateField(key: "timetracking", name: "Original Estimate", required: true, kind: .timeTracking)
+        ]
+        return stub
+    }
+
+    private func loaded(_ stub: StubJiraAuthoring) async -> JiraCreateIssueViewModel {
+        let model = JiraCreateIssueViewModel(authoring: stub, projectKey: "DEMO")
+        await model.load()
+        return model
+    }
+
+    @Test func requiredDescriptionBlocksSubmit() async {
+        let model = await loaded(requiredStub())
+        model.summary = "x"
+        #expect(model.isRequired("description"))
+        #expect(model.problems["description"] == "Required.")
+        #expect(!model.canSubmit)
+        #expect(model.missing.contains("Description"))
+    }
+
+    @Test func teamAndEstimateAreDynamicFields() async {
+        let model = await loaded(requiredStub())
+        #expect(model.dynamicFields.map(\.key) == ["customfield_team", "timetracking"])
+    }
+
+    @Test func estimateMustBeADuration() async {
+        let model = await loaded(requiredStub())
+        model.extraValues["timetracking"] = "soon"
+        #expect(model.problems["timetracking"] == "Use a format like 2h 30m.")
+        model.extraValues["timetracking"] = "2h 30m"
+        #expect(model.problems["timetracking"] == nil)
+    }
+
+    @Test func fullDraftBuildsEveryPayload() async {
+        let model = await loaded(requiredStub())
+        model.summary = "Title"
+        model.descriptionMarkdown = "Body"
+        model.extraValues["customfield_team"] = "team-1"
+        model.extraValues["timetracking"] = "2h 30m"
+        #expect(model.canSubmit)
+
+        let draft = model.draft()
+        #expect(draft?.description == "Body")
+        #expect(draft?.extra.contains(.custom("customfield_team", .string("team-1")))
+                == true)
+        #expect(draft?.extra.contains(.custom("timetracking", .object(["originalEstimate": .string("2h 30m")]))) == true)
+    }
+
+    @Test func genericKindsBuildTheirPayloads() async {
+        var stub = StubJiraAuthoring()
+        let options = [JiraFieldOption(id: "1", label: "A"), JiraFieldOption(id: "2", label: "B")]
+        stub.fields = [
+            JiraCreateField(key: "cf_num", name: "N", required: true, kind: .number),
+            JiraCreateField(key: "cf_sel", name: "S", required: true, kind: .option, allowed: options),
+            JiraCreateField(key: "cf_multi", name: "M", required: true, kind: .multiOption, allowed: options),
+            JiraCreateField(key: "cf_user", name: "U", required: true, kind: .user),
+            JiraCreateField(key: "cf_date", name: "D", required: true, kind: .date),
+            JiraCreateField(key: "cf_text", name: "T", required: true, kind: .string)
+        ]
+        let model = await loaded(stub)
+        model.summary = "x"
+        model.extraValues = ["cf_num": "3.5", "cf_sel": "2", "cf_date": "2026-05-01", "cf_text": "hi"]
+        model.extraSelections["cf_multi"] = ["1", "2"]
+        model.extraUsers["cf_user"] = [JiraUser(accountID: "acc", displayName: "U")]
+        #expect(model.canSubmit)
+
+        let extra = Dictionary(uniqueKeysWithValues: (model.draft()?.extra ?? []).map { ($0.field, $0.value) })
+        #expect(extra["cf_num"] == .number(3.5))
+        #expect(extra["cf_sel"] == .object(["id": .string("2")]))
+        #expect(extra["cf_multi"] == .array([.object(["id": .string("1")]), .object(["id": .string("2")])]))
+        #expect(extra["cf_user"] == .object(["accountId": .string("acc")]))
+        #expect(extra["cf_date"] == .string("2026-05-01"))
+        #expect(extra["cf_text"] == .string("hi"))
+    }
+
+    @Test func jiraFieldErrorsLandOnTheirField() async {
+        var stub = requiredStub()
+        stub.failure = JiraError.fieldErrors(["description": "Description is required.",
+                                              "weirdfield": "Odd."])
+        let model = await loaded(stub)
+        model.summary = "x"
+        model.descriptionMarkdown = "d"
+        model.extraValues = ["customfield_team": "t", "timetracking": "1h"]
+
+        #expect(await model.submit() == nil)
+        #expect(model.fieldErrors["description"] == "Description is required.")
+        // A field the sheet has no row for goes to the general message.
+        #expect(model.errorMessage == "Odd.")
+
+        model.clearError("description")
+        #expect(model.fieldErrors["description"] == nil)
+    }
+
+    @Test func inputClassification() {
+        func input(_ kind: JiraFieldKind, allowed: [JiraFieldOption] = []) -> JiraFieldInput {
+            JiraCreateIssueViewModel.input(for: JiraCreateField(key: "k", name: "k", kind: kind, allowed: allowed))
+        }
+        #expect(input(.timeTracking) == .duration)
+        #expect(input(.team) == .team)
+        #expect(input(.userList) == .user)
+        #expect(input(.multiOption) == .multiSelect)
+        #expect(input(.adf) == .markdown)
+        #expect(input(.other("x")) == .text)
+        #expect(input(.other("x"), allowed: [JiraFieldOption(id: "1", label: "a")]) == .select)
+    }
+}
