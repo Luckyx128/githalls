@@ -74,10 +74,15 @@ final class JiraCreateIssueViewModel {
         set { UserDefaults.standard.set(newValue, forKey: lastProjectKeyDefaults) }
     }
 
-    init(authoring: any JiraIssueAuthoring, projectKey: String? = nil) {
+    /// The type to open on instead of the default, when a caller already chose.
+    private let preferredTypeID: String?
+
+    init(authoring: any JiraIssueAuthoring, projectKey: String? = nil, prefill: CreateIssuePrefill? = nil) {
         self.authoring = authoring
         // The board's project when there is one; otherwise the last one used.
-        self.preferredProjectKey = projectKey ?? Self.lastProjectKey
+        self.preferredProjectKey = prefill?.projectKey ?? projectKey ?? Self.lastProjectKey
+        self.preferredTypeID = prefill?.issueTypeID
+        self.summary = prefill?.summary ?? ""
     }
 
     // MARK: - Loading
@@ -109,7 +114,8 @@ final class JiraCreateIssueViewModel {
         do {
             issueTypes = try await authoring.issueTypes(projectKey: project.key)
             // A plain task first: sub-tasks need a parent the user hasn't named.
-            let type = issueTypes.first { $0.name == "Task" && !$0.isSubtask }
+            let type = issueTypes.first { $0.id == preferredTypeID && project.key == preferredProjectKey }
+                ?? issueTypes.first { $0.name == "Task" && !$0.isSubtask }
                 ?? issueTypes.first { !$0.isSubtask }
                 ?? issueTypes.first
             await select(type: type)

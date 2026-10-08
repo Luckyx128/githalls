@@ -18,12 +18,13 @@ struct CreateIssueSheet: View {
 
     init(jiraViewModel: JiraViewModel,
          projectKey: String? = nil,
+         prefill: CreateIssuePrefill? = nil,
          authoring: any JiraIssueAuthoring = JiraAuthoringFactory.make(),
          onCreated: @escaping (String) -> Void = { _ in }) {
         self.jiraViewModel = jiraViewModel
         self.projectKey = projectKey
         self.onCreated = onCreated
-        _model = State(initialValue: JiraCreateIssueViewModel(authoring: authoring, projectKey: projectKey))
+        _model = State(initialValue: JiraCreateIssueViewModel(authoring: authoring, projectKey: projectKey, prefill: prefill))
     }
 
     var body: some View {

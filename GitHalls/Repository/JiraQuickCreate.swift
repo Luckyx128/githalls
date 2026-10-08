@@ -17,9 +17,12 @@ final class JiraQuickCreate {
     var errorMessage: String?
 
     private let authoring: any JiraIssueAuthoring
+    private let meta: JiraCreateMetaCache
 
-    init(authoring: any JiraIssueAuthoring = JiraAuthoringFactory.make()) {
+    init(authoring: any JiraIssueAuthoring = JiraAuthoringFactory.make(),
+         meta: JiraCreateMetaCache = .shared) {
         self.authoring = authoring
+        self.meta = meta
     }
 
     /// The project key every card on the board shares — a board is one project
@@ -29,28 +32,57 @@ final class JiraQuickCreate {
             .flatMap { $0.isEmpty ? nil : $0 }
     }
 
-    /// The new key, or nil with `errorMessage` set. Creating succeeded if a key
-    /// came back even when placing the card in the column did not; the board
-    /// then shows it in its default status after the refresh.
-    func submit(status: String, board: JiraViewModel) async -> String? {
+    /// What the typed summary turned into.
+    enum Outcome: Equatable {
+        /// Created, and placed in the column when it could be.
+        case created(String)
+
+        /// The project asks for more than a summary: nothing was sent, and the
+        /// full sheet should open with this.
+        case needsSheet(CreateIssuePrefill)
+
+        /// Nothing happened; `errorMessage` says why.
+        case failed
+    }
+
+    /// Fields beyond the summary that Jira insists on and won't fill itself.
+    /// Project, issue type and reporter are settled by the request or by Jira.
+    static func extraRequirements(in fields: [JiraCreateField]) -> [JiraCreateField] {
+        let settled: Set<String> = ["summary", "project", "issuetype", "reporter"]
+        return fields.filter { $0.required && !$0.hasDefault && !settled.contains($0.key) }
+    }
+
+    /// The default type for a new card: a plain task, else any non-subtask.
+    static func defaultType(in types: [JiraIssueType]) -> JiraIssueType? {
+        types.first { $0.name == "Task" && !$0.isSubtask } ?? types.first { !$0.isSubtask }
+    }
+
+    /// Creates the issue when a summary is all the project asks for; hands back
+    /// a prefill for the full sheet when it asks for more. A created issue is
+    /// moved into the column's status — the board only hears about it after.
+    func submit(status: String, board: JiraViewModel) async -> Outcome {
         let title = summary.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !title.isEmpty, !isCreating else { return nil }
+        guard !title.isEmpty, !isCreating else { return .failed }
 
         guard let projectKey = board.boardProjectKey else {
             errorMessage = "No project to create in yet."
-            return nil
+            return .failed
         }
 
         isCreating = true
         defer { isCreating = false }
 
         do {
-            let types = try await authoring.issueTypes(projectKey: projectKey)
-            guard let type = types.first(where: { $0.name == "Task" && !$0.isSubtask })
-                    ?? types.first(where: { !$0.isSubtask })
-            else {
+            guard let type = Self.defaultType(in: try await meta.issueTypes(projectKey: projectKey, using: authoring)) else {
                 errorMessage = "This project has no issue type to create."
-                return nil
+                return .failed
+            }
+
+            let fields = try await meta.fields(projectKey: projectKey, issueTypeID: type.id, using: authoring)
+            if !Self.extraRequirements(in: fields).isEmpty {
+                errorMessage = nil
+                return .needsSheet(CreateIssuePrefill(summary: title, projectKey: projectKey,
+                                                      issueTypeID: type.id, targetStatus: status))
             }
 
             let key = try await authoring.create(JiraNewIssue(projectKey: projectKey,
@@ -58,12 +90,12 @@ final class JiraQuickCreate {
                                                               summary: title))
             summary = ""
             errorMessage = nil
-            await place(key, in: status, board: board)
+            await Self.place(key, in: status, board: board)
             board.invalidate()
-            return key
+            return .created(key)
         } catch {
             errorMessage = error.localizedDescription
-            return nil
+            return .failed
         }
     }
 
@@ -74,7 +106,8 @@ final class JiraQuickCreate {
         KanbanBoardColumns.transitions(moves, into: status, using: configuration).first
     }
 
-    private func place(_ key: String, in status: String, board: JiraViewModel) async {
+    /// Moves a new issue into the column it was typed in.
+    static func place(_ key: String, in status: String, board: JiraViewModel) async {
         guard let issue = try? await board.fetchIssue(key: key),
               issue.status != status,
               let moves = try? await board.transitions(for: issue),
@@ -83,4 +116,17 @@ final class JiraQuickCreate {
 
         await board.move(issue, to: move)
     }
+}
+
+/// What the full Create Issue sheet opens with when quick-create can't do it
+/// alone.
+struct CreateIssuePrefill: Equatable, Identifiable {
+    var summary: String
+    var projectKey: String
+    var issueTypeID: String
+
+    /// The column's status; the new card is moved there after it is created.
+    var targetStatus: String?
+
+    var id: String { projectKey + "|" + issueTypeID + "|" + summary }
 }

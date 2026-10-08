@@ -14,6 +14,7 @@ struct QuickCreateCard: View {
     @State private var model = JiraQuickCreate()
     @State private var isEditing = false
     @FocusState private var focused: Bool
+    @State private var sheetPrefill: CreateIssuePrefill?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -52,11 +53,26 @@ struct QuickCreateCard: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+        // The project wants more than a title: the full form, with the title,
+        // project, type and this column already in it.
+        .sheet(item: $sheetPrefill) { prefill in
+            CreateIssueSheet(jiraViewModel: viewModel, projectKey: prefill.projectKey, prefill: prefill) { key in
+                guard let target = prefill.targetStatus else { return }
+                Task {
+                    await JiraQuickCreate.place(key, in: target, board: viewModel)
+                    // After the move, or the reload would fetch the old status.
+                    viewModel.invalidate()
+                }
+            }
+        }
     }
 
     private func create() async {
         // Stay open on success: adding several in a row is the common case.
-        _ = await model.submit(status: status, board: viewModel)
+        if case .needsSheet(let prefill) = await model.submit(status: status, board: viewModel) {
+            sheetPrefill = prefill
+            model.summary = ""
+        }
         focused = true
     }
 
