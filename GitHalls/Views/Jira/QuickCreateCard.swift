@@ -47,6 +47,7 @@ struct QuickCreateCard: View {
                 .buttonStyle(.plain)
                 .pointerStyle(.link)
                 .foregroundStyle(.secondary)
+                .accessibilityLabel("Add issue to \(status)")
             }
         }
         .padding(.horizontal, 12)

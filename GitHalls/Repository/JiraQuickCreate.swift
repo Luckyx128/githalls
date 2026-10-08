@@ -71,7 +71,8 @@ final class JiraQuickCreate {
         guard let issue = try? await board.fetchIssue(key: key),
               issue.status != status,
               let moves = try? await board.transitions(for: issue),
-              let move = moves.first(where: { $0.toStatus == status })
+              // By the board's column when it has one: a column can hold several statuses.
+              let move = KanbanBoardColumns.transitions(moves, into: status, using: board.boardConfiguration).first
         else { return }
 
         await board.move(issue, to: move)

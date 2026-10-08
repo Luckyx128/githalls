@@ -117,7 +117,7 @@ final class JiraViewModel {
     /// The project the board is about, read from every card the query returned —
     /// not the filtered columns, which a text filter can empty.
     var boardProjectKey: String? {
-        JiraQuickCreate.projectKey(from: groups.flatMap(\.issues).map(\.key))
+        JiraQuickCreate.projectKey(from: groups.flatMap(\.issues).map(\.key)) ?? selectedBoard?.projectKey
     }
 
     var shownCount: Int { columns.reduce(0) { $0 + $1.count } }
