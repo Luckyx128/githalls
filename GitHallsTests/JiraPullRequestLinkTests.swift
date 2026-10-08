@@ -34,13 +34,13 @@ struct JiraPullRequestLinkMarkdownTests {
     @Test func titleBracketsCannotBreakTheComment() {
         let pr = PullRequestSummary(number: 3, title: "[WIP] a](b) *x*", url: "https://github.com/o/r/pull/3")
         let text = JiraPullRequestLink.commentText(for: pr)
-        // No markdown link wrapper to unbalance; the URL is its own line.
-        #expect(!text.contains("]("))
         #expect(text.hasSuffix("\n" + pr.url))
 
         let doc = JiraMarkdownADF.document(from: text)
         let plain = JiraADF.plainText(from: doc)
         #expect(plain.contains(pr.url))
+        // The title reads back exactly as typed: no link, no italics.
+        #expect(plain.contains("[WIP] a](b) *x*"))
     }
 
     @Test func linkMarkOnlyCommentIsNotMistakenForALink() {

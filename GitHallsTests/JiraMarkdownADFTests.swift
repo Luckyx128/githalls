@@ -67,3 +67,10 @@ struct JiraMarkdownADFTests {
         #expect(nodes.allSatisfy { $0["marks"] == nil })
     }
 }
+
+struct JiraMarkdownADFEscapeTests {
+    @Test func backslashMakesPunctuationLiteral() {
+        let doc = JiraMarkdownADF.document(from: "\\*not italic\\* \\[x\\]")
+        #expect(JiraADF.plainText(from: doc) == "*not italic* [x]")
+    }
+}

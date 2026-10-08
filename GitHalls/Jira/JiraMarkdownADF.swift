@@ -137,7 +137,11 @@ enum JiraMarkdownADF {
         while i < chars.count {
             let c = chars[i]
 
-            if c == "\n" {
+            if c == "\\", i + 1 < chars.count, "\\`*_[]()#".contains(chars[i + 1]) {
+                // A backslash makes the next punctuation mark literal.
+                buffer.append(chars[i + 1])
+                i += 2
+            } else if c == "\n" {
                 flush()
                 nodes.append(["type": "hardBreak"])
                 i += 1
