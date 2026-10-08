@@ -8,13 +8,110 @@ import Foundation
 /// Wrapper do `gh` CLI, mesmo padrão do GitService — actor, Process,
 /// drenagem em bloco dos pipes (não byte-a-byte).
 actor GitHubService {
+    /// Remembered working login per "owner/repo". Logins only, never tokens.
+    private static let accountDefaultsKey = "githubAccountByRepo"
+
+    /// Tokens live in memory for the app session and are never persisted.
+    private var tokens: [String: String] = [:]
+    private var knownLogins: [String]?
+
     struct CommandResult {
         let standardOutput: String
         let standardError: String
         let terminationStatus: Int32
     }
 
+    /// Runs `gh`, and if the active account cannot see the repository, retries
+    /// with the other logged-in accounts (via GH_TOKEN, so `gh`'s own active
+    /// account is never switched). The account that works is remembered per
+    /// repository. If none works, the first failure is returned.
     func run(_ arguments: [String], in directory: URL) async throws -> CommandResult {
+        let remembered = rememberedLogin(in: directory)
+        let firstTry = remembered
+        let original = try await attempt(arguments, in: directory, as: firstTry)
+        if original.terminationStatus == 0 || !GitHubAccounts.isAccessError(original.standardError) {
+            if original.terminationStatus == 0 { remember(firstTry, in: directory) }
+            return original
+        }
+
+        // Only now pay for listing the accounts.
+        let logins = await loginList()
+        for login in GitHubAccounts.attemptOrder(logins: logins, remembered: remembered) where login != firstTry {
+            let result = try await attempt(arguments, in: directory, as: login)
+            if result.terminationStatus == 0 {
+                remember(login, in: directory)
+                return result
+            }
+            if !GitHubAccounts.isAccessError(result.standardError) { return result }
+        }
+        return original
+    }
+
+    /// One run as `login`, or as gh's active account when `login` is nil. A
+    /// login whose token cannot be fetched runs as the active account instead.
+    private func attempt(_ arguments: [String], in directory: URL, as login: String?) async throws -> CommandResult {
+        let token = if let login { await token(for: login) } else { String?.none }
+        return try await execute(arguments, in: directory, token: token)
+    }
+
+    private func loginList() async -> [String] {
+        if let knownLogins { return knownLogins }
+        guard let result = try? await execute(["auth", "status", "--json", "hosts"], in: FileManager.default.temporaryDirectory, token: nil) else {
+            return []
+        }
+        // Older gh has no --json; its text output goes to stderr on some versions.
+        var logins = GitHubAccounts.logins(fromStatusOutput: result.standardOutput)
+        if logins.isEmpty,
+           let text = try? await execute(["auth", "status"], in: FileManager.default.temporaryDirectory, token: nil) {
+            logins = GitHubAccounts.logins(fromStatusOutput: text.standardOutput + "\n" + text.standardError)
+        }
+        if !logins.isEmpty { knownLogins = logins }
+        return logins
+    }
+
+    private func token(for login: String) async -> String? {
+        if let cached = tokens[login] { return cached }
+        guard let result = try? await execute(["auth", "token", "--user", login], in: FileManager.default.temporaryDirectory, token: nil),
+              result.terminationStatus == 0 else { return nil }
+        let token = result.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !token.isEmpty else { return nil }
+        tokens[login] = token
+        return token
+    }
+
+    private func repoKey(in directory: URL) -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["git", "remote", "get-url", "origin"]
+        process.currentDirectoryURL = directory
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return nil }
+        let data = (try? pipe.fileHandleForReading.readToEnd()) ?? Data()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0,
+              let parsed = Self.ownerAndRepo(fromRemoteURL: String(decoding: data, as: UTF8.self))
+        else { return nil }
+        return "\(parsed.owner)/\(parsed.repo)".lowercased()
+    }
+
+    private func rememberedLogin(in directory: URL) -> String? {
+        guard let key = repoKey(in: directory) else { return nil }
+        let map = UserDefaults.standard.dictionary(forKey: Self.accountDefaultsKey) as? [String: String]
+        return map?[key]
+    }
+
+    /// Stores the login that worked (nil clears it: the active account works).
+    private func remember(_ login: String?, in directory: URL) {
+        guard let key = repoKey(in: directory) else { return }
+        var map = (UserDefaults.standard.dictionary(forKey: Self.accountDefaultsKey) as? [String: String]) ?? [:]
+        guard map[key] != login else { return }
+        map[key] = login
+        UserDefaults.standard.set(map, forKey: Self.accountDefaultsKey)
+    }
+
+    private func execute(_ arguments: [String], in directory: URL, token: String?) async throws -> CommandResult {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = ["gh"] + arguments
