@@ -166,6 +166,9 @@ final class KanbanBoardModel {
     func drop(cardKey key: String, onto status: String, before target: String? = nil) -> Bool {
         guard let issue = issue(forKey: key) else { return false }
 
+        // An issue with a write in flight is not asked for another.
+        guard pending[key] == nil, !jira.busyIssues.contains(key) else { return false }
+
         guard columnName(of: key) != status else {
             if let target { Task { await reorder(issue, before: target) } }
             return true
@@ -190,10 +193,17 @@ final class KanbanBoardModel {
         localOrder[column.status] = reordered
         let succeeded = await ranker.rank(request)
 
-        // Success: the view model now holds the order itself.
-        localOrder[column.status] = nil
-        if !succeeded { shakes[issue.key, default: 0] += 1 }
+        // Kept on success: the view model only reorders cards sharing a status,
+        // and a column can hold several. The next search brings Jira's order,
+        // and `settle` lets this one go.
+        if !succeeded {
+            localOrder[column.status] = nil
+            shakes[issue.key, default: 0] += 1
+        }
     }
+
+    /// A fresh search is the truth about order; what a drag showed is done.
+    func settle() { localOrder = [:] }
 
     private func requestMove(_ issue: JiraIssue, to status: String) async {
         // The card goes first; the answer decides whether it stays. The column's

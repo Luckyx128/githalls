@@ -56,6 +56,7 @@ struct KanbanBoardView: View {
         .task(id: Reload(token: viewModel.reloadToken, isConfigured: viewModel.isConfigured)) {
             guard viewModel.isConfigured else { return }
             await viewModel.refresh()
+            board.settle()
             await board.prepareBoards()
         }
     }

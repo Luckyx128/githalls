@@ -156,3 +156,16 @@ struct KanbanBoardColumnsTests {
         #expect(KanbanBoardColumns.transitions(moves, into: "Closed", using: nil).map(\.id) == ["c"])
     }
 }
+
+struct KanbanUnmappedTests {
+    @Test func anUnmappedStatusSharingAColumnNameKeepsItsCards() {
+        var stray = JiraIssue(key: "A-1", summary: "x", status: "Done", statusCategory: "done",
+                              type: "Task", priority: nil, updated: Date(timeIntervalSince1970: 0))
+        stray.statusID = "99"
+        let config = JiraBoardConfiguration(boardID: 1, name: "B", columns: [JiraBoardColumn(name: "Done", statusIDs: ["4"])])
+
+        let groups = KanbanBoardColumns.group([stray], using: config)
+        #expect(groups.map(\.status) == ["Done", "Done (not on board)"])
+        #expect(groups[1].issues.count == 1)
+    }
+}

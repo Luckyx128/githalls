@@ -29,8 +29,14 @@ enum KanbanBoardColumns {
             )
         }
 
+        // A status the board does not map may still share a column's name; its
+        // cards must not vanish into, or be hidden by, that column.
         let taken = Set(boardColumns.map(\.status))
-        let extra = JiraIssueGrouping.byStatus(unmapped).filter { !taken.contains($0.status) }
+        let extra = JiraIssueGrouping.byStatus(unmapped).map { group in
+            taken.contains(group.status)
+                ? JiraIssueGroup(status: "\(group.status) (not on board)", category: group.category, issues: group.issues)
+                : group
+        }
 
         return boardColumns + extra
     }
