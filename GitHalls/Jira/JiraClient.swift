@@ -205,9 +205,20 @@ struct JiraClient {
                 attempt += 1
                 try await retrySleep(wait)
             default:
+                if let fields = Self.fieldErrors(from: data) { throw JiraError.fieldErrors(fields) }
                 throw JiraError.http(status: http.statusCode, message: Self.message(from: data))
             }
         }
+    }
+
+    /// The `errors` object of a validation answer, when it has any entries.
+    static func fieldErrors(from data: Data) -> [String: String]? {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let errors = object["errors"] as? [String: Any]
+        else { return nil }
+
+        let messages = errors.compactMapValues { $0 as? String }
+        return messages.isEmpty ? nil : messages
     }
 
     static func message(from data: Data) -> String? {
