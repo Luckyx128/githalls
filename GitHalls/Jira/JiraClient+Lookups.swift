@@ -9,7 +9,11 @@ import Foundation
 extension JiraClient {
     /// Anyone on the site, matched by name or email.
     func searchUsers(query: String) async throws -> [JiraUser] {
-        try await users(path: "/rest/api/3/user/search", query: ["query": query, "maxResults": "50"])
+        // Jira refuses an empty query here; nothing typed means nobody to show.
+        let text = query.trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty else { return [] }
+
+        return try await users(path: "/rest/api/3/user/search", query: ["query": text, "maxResults": "50"])
     }
 
     /// People an issue in this project can be assigned to.
