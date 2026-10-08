@@ -96,7 +96,11 @@ struct KanbanBoardView: View {
             } label: {
                 Image(systemName: "plus")
             }
-            .help("Create issue")
+            // Not ⌘N: the default File ▸ New Window owns it. Lives on this button,
+            // so it only exists while the board is on screen.
+            .keyboardShortcut("n", modifiers: [.command, .shift])
+            .help("Create issue (⇧⌘N)")
+            .accessibilityLabel("Create issue")
             .disabled(!viewModel.isConfigured)
 
             Button {

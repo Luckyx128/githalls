@@ -117,6 +117,8 @@ struct IssueCommentsView: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.return, modifiers: .command)
+                .help("Post the comment (⌘Return)")
                 .disabled(isPosting || newComment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 if isPosting { ProgressView().controlSize(.small) }
             }
