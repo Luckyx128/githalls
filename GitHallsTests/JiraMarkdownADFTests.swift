@@ -49,4 +49,21 @@ struct JiraMarkdownADFTests {
     @Test func emptyInputHasNoBlocks() {
         #expect(blocks("  \n\n").isEmpty)
     }
+
+    @Test func unclosedFenceRunsToTheEnd() {
+        let result = blocks("```\nlet x = 1\nlet y = 2")
+        #expect(result.count == 1)
+        #expect(result[0]["type"] as? String == "codeBlock")
+    }
+
+    @Test func emptyFenceHasNoContent() {
+        let block = blocks("```\n```")[0]
+        #expect(block["type"] as? String == "codeBlock")
+        #expect(block["content"] == nil)
+    }
+
+    @Test func snakeCaseIsNotItalic() {
+        let nodes = blocks("use my_var_name here")[0]["content"] as! [[String: Any]]
+        #expect(nodes.allSatisfy { $0["marks"] == nil })
+    }
 }
