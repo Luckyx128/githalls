@@ -11,6 +11,7 @@ struct KanbanBoardView: View {
     @Bindable var viewModel: JiraViewModel
 
     @Environment(\.openWindow) private var openWindow
+    @State private var isCreating = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -26,6 +27,10 @@ struct KanbanBoardView: View {
             } else {
                 columns
             }
+        }
+        .sheet(isPresented: $isCreating) {
+            CreateIssueSheet(jiraViewModel: viewModel,
+                             projectKey: JiraQuickCreate.projectKey(from: viewModel.columns.flatMap(\.issues).map(\.key)))
         }
         // One task, not one per trigger: two of them both fire on appear and
         // the board would ask Jira the same question twice.
@@ -62,6 +67,14 @@ struct KanbanBoardView: View {
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 200)
                 .disabled(viewModel.issueCount == 0)
+
+            Button {
+                isCreating = true
+            } label: {
+                Image(systemName: "plus")
+            }
+            .help("Create issue")
+            .disabled(!viewModel.isConfigured)
 
             Button {
                 Task { await viewModel.refresh() }

@@ -49,6 +49,9 @@ struct IssueWindowView: View {
             VStack(alignment: .leading, spacing: 16) {
                 issueBox
                 descriptionBox
+                IssueRelationsView(issue: $detail, jiraViewModel: jiraViewModel)
+                IssueAttachmentsView(issueKey: detail.key, jiraViewModel: jiraViewModel)
+                IssueWorklogView(issueKey: detail.key, jiraViewModel: jiraViewModel)
                 IssueCommentsView(issueKey: detail.key, jiraViewModel: jiraViewModel)
                 branchBox
             }
