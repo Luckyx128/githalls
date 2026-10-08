@@ -59,7 +59,9 @@ final class JiraCreateIssueViewModel {
     /// Jira's (or our own) message, by field key.
     private(set) var fieldErrors: [String: String] = [:]
 
-    private(set) var isLoading = false
+    /// Loads in flight: project, type and the first load overlap, so a count and not a flag.
+    private var loads = 0
+    var isLoading: Bool { loads > 0 }
     private(set) var isSubmitting = false
 
     /// What is not about one field: a failed load, a network error.
@@ -88,8 +90,8 @@ final class JiraCreateIssueViewModel {
     // MARK: - Loading
 
     func load() async {
-        isLoading = true
-        defer { isLoading = false }
+        loads += 1
+        defer { loads -= 1 }
 
         do {
             async let loadedProjects = authoring.projects()
@@ -111,8 +113,14 @@ final class JiraCreateIssueViewModel {
         fields = []
         guard let project else { return }
 
+        loads += 1
+        defer { loads -= 1 }
+
         do {
-            issueTypes = try await authoring.issueTypes(projectKey: project.key)
+            let loaded = try await authoring.issueTypes(projectKey: project.key)
+            // The user may have chosen another project while this was in flight.
+            guard selectedProject == project else { return }
+            issueTypes = loaded
             // A plain task first: sub-tasks need a parent the user hasn't named.
             let type = issueTypes.first { $0.id == preferredTypeID && project.key == preferredProjectKey }
                 ?? issueTypes.first { $0.name == "Task" && !$0.isSubtask }
@@ -134,8 +142,16 @@ final class JiraCreateIssueViewModel {
         componentIDs = []
         guard let project = selectedProject, let type else { return }
 
+        loads += 1
+        defer { loads -= 1 }
+
         do {
-            fields = try await authoring.createFields(projectKey: project.key, issueTypeID: type.id)
+            let loaded = try await authoring.createFields(projectKey: project.key, issueTypeID: type.id)
+            guard selectedProject == project, selectedType == type else { return }
+            fields = loaded
+            // A date picker shows today; make the value match what it shows.
+            let today = Self.dayString(Date())
+            for field in dynamicFields where Self.input(for: field) == .date { extraValues[field.key] = today }
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
@@ -305,7 +321,7 @@ final class JiraCreateIssueViewModel {
             // row for would vanish, so it goes to the general message instead.
             var unplaced: [String] = []
             for (key, message) in errors {
-                if key == "summary" || field(key) != nil || (fields.isEmpty && Self.standardFieldKeys.contains(key)) {
+                if rendersRow(for: key) {
                     fieldErrors[key] = message
                 } else {
                     unplaced.append(message)
@@ -316,6 +332,18 @@ final class JiraCreateIssueViewModel {
         } catch {
             errorMessage = error.localizedDescription
             return nil
+        }
+    }
+
+    /// Whether the sheet draws a row for this field, and so can show its error.
+    func rendersRow(for key: String) -> Bool {
+        switch key {
+        case "summary", "project", "issuetype": true
+        case "description", "assignee", "labels", "duedate": isShown(key)
+        case "priority": isShown(key) && !priorityOptions.isEmpty
+        case "components": !componentOptions.isEmpty
+        case "parent": supportsParent
+        default: dynamicFields.contains { $0.key == key }
         }
     }
 

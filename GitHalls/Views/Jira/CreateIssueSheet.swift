@@ -210,7 +210,6 @@ struct CreateIssueSheet: View {
                 set: { text.wrappedValue = Self.day.string(from: $0) }
             ), displayedComponents: .date)
             .labelsHidden()
-            .onAppear { if text.wrappedValue.isEmpty { text.wrappedValue = Self.day.string(from: Date()) } }
         case .duration:
             TextField("", text: text, prompt: Text("2h 30m"))
                 .textFieldStyle(.roundedBorder)

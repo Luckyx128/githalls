@@ -73,7 +73,11 @@ struct UserPickerField: View {
 
                 ForEach(results.prefix(5)) { user in
                     Button(user.displayName) {
-                        if allowsMany { selected.append(user) } else { selected = [user] }
+                        if allowsMany {
+                            if !selected.contains(where: { $0.id == user.id }) { selected.append(user) }
+                        } else {
+                            selected = [user]
+                        }
                         query = ""
                         results = []
                         onChange()

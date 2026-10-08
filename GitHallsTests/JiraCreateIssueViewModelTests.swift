@@ -239,3 +239,36 @@ struct JiraCreateRequiredFieldsTests {
         #expect(input(.other("x"), allowed: [JiraFieldOption(id: "1", label: "a")]) == .select)
     }
 }
+
+@MainActor
+struct JiraCreateReviewFixTests {
+    @Test func requiredDateStartsAsTodayAndAllowsSubmit() async {
+        var stub = StubJiraAuthoring()
+        stub.fields = [JiraCreateField(key: "cf_d", name: "D", required: true, kind: .date)]
+        let model = JiraCreateIssueViewModel(authoring: stub, projectKey: "DEMO")
+        await model.load()
+        model.summary = "x"
+        #expect(model.extraValues["cf_d"] == JiraCreateIssueViewModel.dayString(Date()))
+        #expect(model.canSubmit)
+    }
+
+    @Test func notLoadingOnceEverythingSettled() async {
+        let model = JiraCreateIssueViewModel(authoring: StubJiraAuthoring(), projectKey: "DEMO")
+        await model.load()
+        #expect(!model.isLoading)
+    }
+
+    @Test func errorsForRowsTheSheetDoesNotDrawGoToTheGeneralMessage() async {
+        var stub = StubJiraAuthoring()
+        stub.fields = [JiraCreateField(key: "summary", name: "S", required: true),
+                       JiraCreateField(key: "reporter", name: "Reporter")]
+        stub.failure = JiraError.fieldErrors(["reporter": "Reporter is not allowed."])
+        let model = JiraCreateIssueViewModel(authoring: stub, projectKey: "DEMO")
+        await model.load()
+        model.summary = "x"
+
+        #expect(await model.submit() == nil)
+        #expect(model.fieldErrors["reporter"] == nil)
+        #expect(model.errorMessage == "Reporter is not allowed.")
+    }
+}
