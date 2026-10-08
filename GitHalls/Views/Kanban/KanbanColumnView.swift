@@ -81,6 +81,10 @@ struct KanbanColumnView: View {
                 .animation(motion.spring, value: targetedCard)
                 .animation(motion.spring, value: column.issues.map(\.key))
             }
+
+            QuickCreateCard(status: column.status, viewModel: viewModel)
+                .padding(.horizontal, 8)
+                .padding(.bottom, 8)
         }
         .frame(width: 280)
     }

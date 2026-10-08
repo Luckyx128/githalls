@@ -14,6 +14,7 @@ struct KanbanBoardView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var board: KanbanBoardModel
+    @State private var isCreating = false
 
     init(viewModel: JiraViewModel) {
         self.viewModel = viewModel
@@ -34,6 +35,10 @@ struct KanbanBoardView: View {
             } else {
                 columns
             }
+        }
+        .sheet(isPresented: $isCreating) {
+            CreateIssueSheet(jiraViewModel: viewModel,
+                             projectKey: JiraQuickCreate.projectKey(from: viewModel.columns.flatMap(\.issues).map(\.key)))
         }
         // One task, not one per trigger: two of them both fire on appear and
         // the board would ask Jira the same question twice.
@@ -84,6 +89,14 @@ struct KanbanBoardView: View {
                 .disabled(viewModel.issueCount == 0)
 
             columnsMenu
+
+            Button {
+                isCreating = true
+            } label: {
+                Image(systemName: "plus")
+            }
+            .help("Create issue")
+            .disabled(!viewModel.isConfigured)
 
             Button {
                 Task { await viewModel.refresh() }
