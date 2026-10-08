@@ -14,8 +14,7 @@ struct KanbanRankRequest: Equatable {
 }
 
 /// The one thing the board needs from the Agile API to reorder cards. Behind a
-/// protocol so the board ships before the client does; the real conformance
-/// calls `JiraViewModel.rank(_:_:)` (feat/jira-api, JIRA_API.md Phase 3).
+/// protocol so the board's ordering can be tested without a Jira.
 @MainActor
 protocol KanbanRanking {
     /// False when Jira (or this build) refused; the board has already shown
@@ -23,15 +22,24 @@ protocol KanbanRanking {
     func rank(_ request: KanbanRankRequest) async -> Bool
 }
 
-/// Until the Agile client lands: every request is refused, with a reason.
+/// Ranks through the view model, which reorders its own column at once and
+/// puts it back on a refusal.
 @MainActor
-struct KanbanRankingUnavailable: KanbanRanking {
+struct JiraKanbanRanking: KanbanRanking {
     let jira: JiraViewModel
 
     func rank(_ request: KanbanRankRequest) async -> Bool {
-        jira.actionFailed = true
-        jira.actionMessage = "Reordering cards isn't available yet."
-        return false
+        guard let issue = jira.boardIssue(for: request.issueKey) else { return false }
+
+        let position: JiraRankPosition
+        if let before = request.before {
+            position = .before(before)
+        } else if let after = request.after {
+            position = .after(after)
+        } else {
+            return false
+        }
+        return await jira.rank(issue, position)
     }
 }
 

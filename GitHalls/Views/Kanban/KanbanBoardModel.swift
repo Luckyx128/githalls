@@ -59,7 +59,7 @@ final class KanbanBoardModel {
     init(jira: JiraViewModel, store: KanbanLayoutStore = KanbanLayoutStore(), ranker: (any KanbanRanking)? = nil) {
         self.jira = jira
         self.store = store
-        self.ranker = ranker ?? KanbanRankingUnavailable(jira: jira)
+        self.ranker = ranker ?? JiraKanbanRanking(jira: jira)
     }
 
     // MARK: - Columns
