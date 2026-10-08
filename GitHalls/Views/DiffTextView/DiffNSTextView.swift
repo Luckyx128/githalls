@@ -19,6 +19,37 @@ protocol DiffTextViewContext: AnyObject {
     var expandHandler: ((Int, ExpanderRow.Direction) -> Void)? { get }
 }
 
+/// Borderless button that shows a pointing hand and a soft background under the pointer.
+@MainActor
+private final class HoverButton: NSButton {
+    private var hovering = false {
+        didSet { layer?.backgroundColor = hovering ? NSColor.labelColor.withAlphaComponent(0.10).cgColor : nil }
+    }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.cornerRadius = 4
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for area in trackingAreas where area.owner === self { removeTrackingArea(area) }
+        addTrackingArea(NSTrackingArea(rect: .zero,
+                                       options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+                                       owner: self, userInfo: nil))
+    }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .pointingHand)
+    }
+
+    override func mouseEntered(with event: NSEvent) { hovering = true }
+    override func mouseExited(with event: NSEvent) { hovering = false }
+}
+
 /// The few borderless buttons shown at the trailing edge of a hovered hunk header.
 @MainActor
 private final class HunkActionBar: NSView {
@@ -64,7 +95,7 @@ private final class HunkActionBar: NSView {
     }
 
     private func add(_ title: String, symbol: String, destructive: Bool, action: @escaping () -> Void) {
-        let button = NSButton(title: title, target: self, action: #selector(fire(_:)))
+        let button = HoverButton(title: title, target: self, action: #selector(fire(_:)))
         button.tag = actions.count
         button.isBordered = false
         button.font = .systemFont(ofSize: 11)
@@ -100,6 +131,10 @@ final class DiffNSTextView: NSTextView {
 
     private let actionBar = HunkActionBar()
     private var gutterDrag: (anchor: Int, base: Set<Int>, adds: Bool)?
+    /// Diff row whose gutter cell is under the pointer and clickable.
+    private var hoveredGutterRow: Int?
+    /// The expander label currently underlined, as a range in the text storage.
+    private var hoveredLabel: NSRange?
 
     private static let jumpMargin: CGFloat = 8
 
@@ -146,6 +181,11 @@ final class DiffNSTextView: NSTextView {
                 // still reads as one when its tint sits on a +/- tint.
                 self.diffTheme.selectionBar.setFill()
                 NSRect(x: gutterWidth - 4, y: rowRect.minY, width: 3, height: rowRect.height).fill()
+            }
+
+            if info.index == self.hoveredGutterRow {
+                self.diffTheme.gutterHover.setFill()
+                NSRect(x: 0, y: rowRect.minY, width: gutterWidth - 1, height: rowRect.height).fill()
             }
 
             // Only the first fragment of a wrapped line carries its numbers.
@@ -242,7 +282,7 @@ final class DiffNSTextView: NSTextView {
         for area in trackingAreas where area.owner === self { removeTrackingArea(area) }
         addTrackingArea(NSTrackingArea(
             rect: .zero,
-            options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+            options: [.mouseMoved, .mouseEnteredAndExited, .cursorUpdate, .activeInKeyWindow, .inVisibleRect],
             owner: self,
             userInfo: nil
         ))
@@ -251,6 +291,13 @@ final class DiffNSTextView: NSTextView {
     override func mouseMoved(with event: NSEvent) {
         super.mouseMoved(with: event)
         refreshHover()
+        applyCursor()
+    }
+
+    override func cursorUpdate(with event: NSEvent) {
+        super.cursorUpdate(with: event)
+        refreshHover()
+        applyCursor()
     }
 
     override func mouseExited(with event: NSEvent) {
@@ -262,6 +309,13 @@ final class DiffNSTextView: NSTextView {
     /// Also called after a scroll or a new diff: the content moves under a
     /// pointer that did not.
     func refreshHover() {
+        updatePointerTarget()
+        updateActionBar()
+        // Content moved under a still pointer: the cursor must follow it.
+        if pointerIsOverTextView { applyCursor() }
+    }
+
+    private func updateActionBar() {
         guard let interaction = diffContext?.interaction, let diff = syncedDiff, let window else {
             actionBar.removeFromSuperview()
             return
@@ -297,15 +351,104 @@ final class DiffNSTextView: NSTextView {
 
     // MARK: - Gutter selection
 
-    override func resetCursorRects() {
-        super.resetCursorRects()
-        if let built = diffContext?.builtDiffText, diffContext?.expandHandler != nil {
-            for info in built.lines where info.kind == .expander {
-                if let row = rowRect(forLine: info.index) { addCursorRect(row, cursor: .pointingHand) }
+    // MARK: - Pointer feedback
+
+    private enum PointerTarget {
+        case none
+        case gutter(row: Int)
+        case header(row: Int)
+        case expander(row: Int, label: NSRange?)
+    }
+
+    private var currentPoint: NSPoint? {
+        guard let window else { return nil }
+        let point = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        return bounds.contains(point) && visibleRect.contains(point) ? point : nil
+    }
+
+    /// True when the pointer is over this view itself and not a sibling or the action bar.
+    private var pointerIsOverTextView: Bool {
+        guard let window, let content = window.contentView, let frame = content.superview,
+              currentPoint != nil
+        else { return false }
+        let hit = content.hitTest(frame.convert(window.mouseLocationOutsideOfEventStream, from: nil))
+        return hit === self
+    }
+
+    private func pointerTarget(at point: NSPoint) -> PointerTarget {
+        guard let diff = syncedDiff, let built = diffContext?.builtDiffText,
+              let row = lineIndex(at: point, clamped: false)
+        else { return .none }
+        let line = diff.lines[row]
+
+        if line.kind == .expander, diffContext?.expandHandler != nil,
+           let expander = line.expander, !expander.actions.isEmpty {
+            let start = built.lines[row].characterRange.location
+            let offset = characterIndexForInsertion(at: point) - start
+            let action = expander.actions.min { distance(offset, to: $0.range) < distance(offset, to: $1.range) }
+            let label = action.map { NSRange(location: start + $0.range.lowerBound, length: $0.range.count) }
+            return .expander(row: row, label: label)
+        }
+
+        guard diffContext?.interaction?.mode == .lines, point.x < built.gutterWidth else { return .none }
+        if line.kind == .hunkHeader { return line.hunkIndex != nil ? .header(row: row) : .none }
+        return line.isChange ? .gutter(row: row) : .none
+    }
+
+    /// Updates the gutter highlight and the expander underline for the pointer position.
+    private func updatePointerTarget() {
+        var gutterRow: Int?
+        var label: NSRange?
+        if pointerIsOverTextView, let point = currentPoint {
+            switch pointerTarget(at: point) {
+            case .gutter(let row), .header(let row): gutterRow = row
+            case .expander(_, let range): label = range
+            case .none: break
             }
         }
-        guard diffContext?.interaction?.mode == .lines, let gutter = diffContext?.builtDiffText?.gutterWidth else { return }
-        addCursorRect(NSRect(x: 0, y: visibleRect.minY, width: gutter, height: visibleRect.height), cursor: .pointingHand)
+        if gutterRow != hoveredGutterRow {
+            if let width = diffContext?.builtDiffText?.gutterWidth {
+                for row in [hoveredGutterRow, gutterRow].compactMap({ $0 }) {
+                    if var rect = rowRect(forLine: row) {
+                        rect.size.width = width
+                        setNeedsDisplay(rect)
+                    }
+                }
+            }
+            hoveredGutterRow = gutterRow
+        }
+        if label != hoveredLabel, let layoutManager {
+            let length = textStorage?.length ?? 0
+            if let old = hoveredLabel, NSMaxRange(old) <= length {
+                layoutManager.removeTemporaryAttribute(.underlineStyle, forCharacterRange: old)
+                layoutManager.removeTemporaryAttribute(.foregroundColor, forCharacterRange: old)
+            }
+            if let label, NSMaxRange(label) <= length {
+                layoutManager.addTemporaryAttributes([
+                    .underlineStyle: NSUnderlineStyle.single.rawValue,
+                    .foregroundColor: NSColor.labelColor,
+                ], forCharacterRange: label)
+            }
+            hoveredLabel = label
+        }
+    }
+
+    /// Pointing hand over clickable gutter cells and expander labels, an arrow
+    /// over the rest of the gutter, the I-beam over code. NSTextView sets the
+    /// I-beam itself, so this runs after it.
+    private func applyCursor() {
+        if gutterDrag != nil { NSCursor.pointingHand.set(); return }
+        guard let point = currentPoint else { return }
+        switch pointerTarget(at: point) {
+        case .gutter, .header, .expander:
+            NSCursor.pointingHand.set()
+        case .none:
+            if let gutter = diffContext?.builtDiffText?.gutterWidth, point.x < gutter {
+                NSCursor.arrow.set()
+            } else {
+                NSCursor.iBeam.set()
+            }
+        }
     }
 
     /// A click on an expander row: the label under the pointer decides what is revealed.
@@ -374,6 +517,7 @@ final class DiffNSTextView: NSTextView {
             return
         }
         autoscroll(with: event)
+        NSCursor.pointingHand.set()
         let point = convert(event.locationInWindow, from: nil)
         if let row = lineIndex(at: point, clamped: true) {
             applyDrag(to: row, diff: diff, selection: interaction.selection)
@@ -383,6 +527,7 @@ final class DiffNSTextView: NSTextView {
     override func mouseUp(with event: NSEvent) {
         if gutterDrag != nil {
             gutterDrag = nil
+            refreshHover()
         } else {
             super.mouseUp(with: event)
         }

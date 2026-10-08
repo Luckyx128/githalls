@@ -47,6 +47,8 @@ nonisolated struct DiffTextTheme {
     let gutterSeparator: NSColor
     let selectionTint: NSColor
     let selectionBar: NSColor
+    /// Gutter cell under the pointer; lighter than `selectionTint`.
+    let gutterHover: NSColor
     let additionMarker: NSColor
     let deletionMarker: NSColor
 
@@ -126,6 +128,7 @@ nonisolated struct DiffTextTheme {
             gutterSeparator: blend(background, text, 0.14),
             selectionTint: NSColor.controlAccentColor.withAlphaComponent(isDark ? 0.20 : 0.16),
             selectionBar: NSColor.controlAccentColor,
+            gutterHover: NSColor.controlAccentColor.withAlphaComponent(isDark ? 0.12 : 0.09),
             additionMarker: isDark ? NSColor(srgbRed: 0.40, green: 0.85, blue: 0.45, alpha: 1)
                                    : NSColor(srgbRed: 0.16, green: 0.60, blue: 0.24, alpha: 1),
             deletionMarker: isDark ? NSColor(srgbRed: 1.0, green: 0.45, blue: 0.45, alpha: 1)

@@ -131,6 +131,7 @@ private struct DiffFileHeader: View {
             Toggle("Hide whitespace changes", isOn: $viewModel.ignoreWhitespace)
                 .toggleStyle(.checkbox)
                 .controlSize(.small)
+                .pointerStyle(.link)
                 .help(viewModel.isStagingBlockedByWhitespace
                       ? "Show whitespace changes to stage parts of this file"
                       : "Hide whitespace changes (staging parts of a file needs them shown)")
@@ -157,10 +158,13 @@ private struct LineSelectionBar: View {
 
                 if viewModel.selectedDiffSide == .staged {
                     Button("Unstage") { Task { await viewModel.unstageSelectedLines() } }
+                        .hoverHighlight()
                 } else {
                     Button("Stage") { Task { await viewModel.stageSelectedLines() } }
+                        .hoverHighlight()
                     if viewModel.selectedChange?.status != .untracked {
                         Button("Discard", role: .destructive) { viewModel.requestDiscardSelectedLines() }
+                            .hoverHighlight()
                     }
                 }
 
@@ -169,6 +173,7 @@ private struct LineSelectionBar: View {
                 } label: {
                     Image(systemName: "xmark")
                 }
+                .hoverHighlight()
                 .help("Clear selection (Esc)")
                 .keyboardShortcut(.cancelAction)
             }
