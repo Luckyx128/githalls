@@ -23,6 +23,7 @@ struct IssueWindowView: View {
     @State private var isLoadingDetail = false
     @State private var detailError: String?
     @State private var branchName = ""
+    @State private var isLinking = false
 
     /// The moves this issue can make, fetched once per status the window shows.
     @State private var transitions: [JiraTransition] = []
@@ -342,8 +343,9 @@ struct IssueWindowView: View {
 
             HStack {
                 Button("Link Pull Request") { Task { await linkPullRequest() } }
-                    .disabled(repositoryViewModel.repositoryURL == nil || isBusy)
+                    .disabled(repositoryViewModel.repositoryURL == nil || isBusy || isLinking)
                     .help("Comments the open pull request of the checked-out branch on this issue.")
+                if isLinking { ProgressView().controlSize(.small) }
                 Text("Posts the open PR of the current branch as a comment.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -360,6 +362,9 @@ struct IssueWindowView: View {
     }
 
     private func linkPullRequest() async {
+        guard !isLinking else { return }
+        isLinking = true
+        defer { isLinking = false }
         actionResult = nil
 
         guard let pullRequest = await repositoryViewModel.openPullRequest() else {

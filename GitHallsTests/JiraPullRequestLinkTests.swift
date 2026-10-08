@@ -20,3 +20,12 @@ struct JiraPullRequestLinkTests {
         #expect(!JiraPullRequestLink.isLinked(pr, in: [JiraComment(id: "2", body: "unrelated")]))
     }
 }
+
+struct JiraPullRequestLinkPlainTextTests {
+    @Test func linkSurvivesAPlainTextRoundTrip() {
+        let pr = PullRequestSummary(number: 9, title: "Fix [wip] thing", url: "https://github.com/o/r/pull/9")
+        let doc = JiraMarkdownADF.document(from: JiraPullRequestLink.commentText(for: pr))
+        let text = JiraADF.plainText(from: doc)
+        #expect(JiraPullRequestLink.isLinked(pr, in: [JiraComment(id: "1", body: text)]))
+    }
+}
