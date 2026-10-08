@@ -37,6 +37,7 @@ struct InlineEditText<Display: View>: View {
                 .pointerStyle(.link)
                 .foregroundStyle(.secondary)
                 .help("Edit")
+                .accessibilityLabel("Edit \(placeholder.isEmpty ? "description" : placeholder)")
             }
         }
     }
@@ -48,6 +49,7 @@ struct InlineEditText<Display: View>: View {
                     .font(.body.monospaced())
                     .frame(minHeight: 120)
                     .focused($focused)
+                    .accessibilityLabel("Description editor")
                     .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.gray.opacity(0.3)))
             } else {
                 TextField(placeholder, text: $draft)
@@ -61,7 +63,7 @@ struct InlineEditText<Display: View>: View {
                 Button("Save") { Task { await save() } }
                     .buttonStyle(.borderedProminent)
                     .disabled(isSaving || !canSave)
-                if isSaving { ProgressView().controlSize(.small) }
+                if isSaving { ProgressView().controlSize(.small).accessibilityLabel("Saving changes") }
                 if multiline { Text("Markdown").font(.callout).foregroundStyle(.secondary) }
             }
         }
