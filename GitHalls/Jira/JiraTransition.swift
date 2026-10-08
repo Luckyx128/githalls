@@ -21,5 +21,9 @@ struct JiraTransition: Identifiable, Equatable, Hashable {
     /// resolution, say — so a bare POST is refused.
     var hasScreen = false
 
+    /// The id of the status it lands in. Names can repeat; a board's columns
+    /// are made of ids.
+    var toStatusID: String?
+
     var leadsToInProgress: Bool { toStatusCategory == "indeterminate" }
 }
