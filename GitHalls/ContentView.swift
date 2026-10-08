@@ -145,7 +145,7 @@ struct ContentView: View {
                 }
                 // The toolbar already wraps items in Liquid Glass; a fill of our
                 // own shows up as a grey pill inside it.
-                .padding(.horizontal, 4)
+                .padding(.horizontal, 10)
             }
             .buttonStyle(.plain)
             .pointerStyle(.link)

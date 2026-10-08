@@ -153,7 +153,8 @@ struct JiraClient {
             name: name,
             toStatus: to?["name"] as? String ?? name,
             toStatusCategory: category?["key"] as? String ?? "indeterminate",
-            hasScreen: raw["hasScreen"] as? Bool ?? false
+            hasScreen: raw["hasScreen"] as? Bool ?? false,
+            toStatusID: to?["id"] as? String
         )
     }
 

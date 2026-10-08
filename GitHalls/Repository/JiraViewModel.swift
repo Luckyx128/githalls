@@ -291,6 +291,7 @@ final class JiraViewModel {
             var moved = moved
             moved.status = transition.toStatus
             moved.statusCategory = transition.toStatusCategory
+            moved.statusID = transition.toStatusID ?? moved.statusID
             return moved
         }
     }

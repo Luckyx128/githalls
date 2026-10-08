@@ -109,3 +109,50 @@ struct KanbanShiftTests {
         #expect(layout.ordered(groups).map(\.status) == ["B", "C", "A"])
     }
 }
+
+struct KanbanBoardColumnsTests {
+    private func issue(_ key: String, status: String, id: String?, category: String = "new") -> JiraIssue {
+        var issue = JiraIssue(key: key, summary: key, status: status, statusCategory: category,
+                              type: "Task", priority: nil, updated: Date(timeIntervalSince1970: 0))
+        issue.statusID = id
+        return issue
+    }
+
+    private let config = JiraBoardConfiguration(boardID: 1, name: "B", columns: [
+        JiraBoardColumn(name: "To Do", statusIDs: ["1"]),
+        JiraBoardColumn(name: "Doing", statusIDs: ["2", "3"]),
+        JiraBoardColumn(name: "Done", statusIDs: ["4"])
+    ])
+
+    @Test func withoutABoardColumnsAreStatuses() {
+        let groups = KanbanBoardColumns.group([issue("A-1", status: "Review", id: "9")], using: nil)
+        #expect(groups.map(\.status) == ["Review"])
+    }
+
+    @Test func aBoardColumnHoldsSeveralStatusesAndKeepsEmptyOnes() {
+        let groups = KanbanBoardColumns.group([
+            issue("A-1", status: "In Dev", id: "2"),
+            issue("A-2", status: "In Review", id: "3")
+        ], using: config)
+
+        #expect(groups.map(\.status) == ["To Do", "Doing", "Done"])
+        #expect(groups[1].issues.map(\.key) == ["A-1", "A-2"])
+        #expect(groups[0].issues.isEmpty && groups[2].issues.isEmpty)
+    }
+
+    @Test func unmappedIssuesKeepAColumnOfTheirOwn() {
+        let groups = KanbanBoardColumns.group([issue("A-1", status: "Parked", id: "99")], using: config)
+        #expect(groups.map(\.status) == ["To Do", "Doing", "Done", "Parked"])
+    }
+
+    @Test func transitionsMatchByStatusIDOnABoard() {
+        let moves = [
+            JiraTransition(id: "a", name: "Start", toStatus: "In Dev", toStatusCategory: "indeterminate", toStatusID: "2"),
+            JiraTransition(id: "b", name: "Review", toStatus: "In Review", toStatusCategory: "indeterminate", toStatusID: "3"),
+            JiraTransition(id: "c", name: "Finish", toStatus: "Closed", toStatusCategory: "done", toStatusID: "4")
+        ]
+
+        #expect(KanbanBoardColumns.transitions(moves, into: "Doing", using: config).map(\.id) == ["a", "b"])
+        #expect(KanbanBoardColumns.transitions(moves, into: "Closed", using: nil).map(\.id) == ["c"])
+    }
+}

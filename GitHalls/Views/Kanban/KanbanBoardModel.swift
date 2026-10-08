@@ -45,7 +45,7 @@ final class KanbanBoardModel {
     }
 
     /// Cards already shown in their new column, by key.
-    private var pending: [String: (status: String, category: String)] = [:]
+    private var pending: [String: (status: String, category: String, statusID: String?)] = [:]
 
     /// Set when several moves lead to the dropped-on column.
     var choice: KanbanMoveChoice?
@@ -71,38 +71,34 @@ final class KanbanBoardModel {
 
     var visibleColumns: [JiraIssueGroup] { allColumns.filter { !layout.hidden.contains($0.status) } }
 
+    /// In-flight moves applied to the issues, then the issues cut into columns.
+    /// Patching the issue (status, id, category) and not the columns is what lets
+    /// board columns and plain statuses share one path.
     private func applyingPending(to groups: [JiraIssueGroup]) -> [JiraIssueGroup] {
-        var groups = groups
-        if !localOrder.isEmpty {
-            groups = groups.map { group in
-                guard let keys = localOrder[group.status], Set(keys) == Set(group.issues.map(\.key)) else { return group }
+        var issues = groups.flatMap(\.issues)
 
-                let byKey = Dictionary(uniqueKeysWithValues: group.issues.map { ($0.key, $0) })
-                return JiraIssueGroup(status: group.status, category: group.category, issues: keys.compactMap { byKey[$0] })
-            }
-        }
-        guard !pending.isEmpty else { return groups }
+        for index in issues.indices {
+            guard let target = pending[issues[index].key] else { continue }
 
-        var result = groups.map { group in
-            JiraIssueGroup(status: group.status, category: group.category,
-                           issues: group.issues.filter { pending[$0.key] == nil })
+            issues[index].status = target.status
+            issues[index].statusCategory = target.category
+            issues[index].statusID = target.statusID
         }
 
-        for issue in groups.flatMap(\.issues) {
-            guard let target = pending[issue.key] else { continue }
+        var regrouped = KanbanBoardColumns.group(issues, using: jira.boardConfiguration)
 
-            var moved = issue
-            moved.status = target.status
-            moved.statusCategory = target.category
+        // The filter hides cards, not columns: keep the empty ones it emptied.
+        let present = Set(regrouped.map(\.status))
+        regrouped += groups.filter { !present.contains($0.status) }
 
-            if let index = result.firstIndex(where: { $0.status == target.status }) {
-                result[index] = JiraIssueGroup(status: target.status, category: result[index].category,
-                                               issues: result[index].issues + [moved])
-            } else {
-                result.append(JiraIssueGroup(status: target.status, category: target.category, issues: [moved]))
-            }
+        guard !localOrder.isEmpty else { return regrouped }
+
+        return regrouped.map { group in
+            guard let keys = localOrder[group.status], Set(keys) == Set(group.issues.map(\.key)) else { return group }
+
+            let byKey = Dictionary(uniqueKeysWithValues: group.issues.map { ($0.key, $0) })
+            return JiraIssueGroup(status: group.status, category: group.category, issues: keys.compactMap { byKey[$0] })
         }
-        return result
     }
 
     private func mutateLayout(_ change: (inout KanbanColumnLayout) -> Void) {
@@ -128,6 +124,36 @@ final class KanbanBoardModel {
     func toggleCollapsed(_ status: String) { mutateLayout { $0.toggleCollapsed(status) } }
     func toggleHidden(_ status: String) { mutateLayout { $0.toggleHidden(status) } }
 
+    // MARK: - Board
+
+    private static let boardKey = "kanban.boardID"
+
+    /// Lists the boards once and returns to the one used last. Until a board is
+    /// chosen the columns are plain statuses.
+    func prepareBoards() async {
+        guard jira.isConfigured else { return }
+
+        if jira.boards.isEmpty { await jira.loadBoards() }
+
+        guard jira.selectedBoard == nil,
+              case let id = store.defaults.integer(forKey: Self.boardKey), id != 0,
+              let board = jira.boards.first(where: { $0.id == id }) else { return }
+
+        await jira.selectBoard(board)
+    }
+
+    /// nil goes back to columns made from the statuses on the board.
+    func chooseBoard(_ board: JiraBoard?) async {
+        store.defaults.set(board?.id ?? 0, forKey: Self.boardKey)
+
+        guard let board else {
+            jira.selectedBoard = nil
+            jira.boardConfiguration = nil
+            return
+        }
+        await jira.selectBoard(board)
+    }
+
     // MARK: - Cards
 
     func issue(forKey key: String) -> JiraIssue? {
@@ -140,7 +166,7 @@ final class KanbanBoardModel {
     func drop(cardKey key: String, onto status: String, before target: String? = nil) -> Bool {
         guard let issue = issue(forKey: key) else { return false }
 
-        guard issue.status != status else {
+        guard columnName(of: key) != status else {
             if let target { Task { await reorder(issue, before: target) } }
             return true
         }
@@ -149,18 +175,23 @@ final class KanbanBoardModel {
         return true
     }
 
+    /// The column a card is in right now, which on a board is not its status.
+    private func columnName(of key: String) -> String? {
+        allColumns.first { $0.issues.contains { $0.key == key } }?.status
+    }
+
     private func reorder(_ issue: JiraIssue, before target: String) async {
-        guard let column = allColumns.first(where: { $0.status == issue.status }) else { return }
+        guard let column = allColumns.first(where: { $0.issues.contains { $0.key == issue.key } }) else { return }
 
         let keys = column.issues.map(\.key)
         let reordered = KanbanOrdering.moving(issue.key, before: target, in: keys)
         guard reordered != keys, let request = KanbanOrdering.request(for: issue.key, in: reordered) else { return }
 
-        localOrder[issue.status] = reordered
+        localOrder[column.status] = reordered
         let succeeded = await ranker.rank(request)
 
         // Success: the view model now holds the order itself.
-        localOrder[issue.status] = nil
+        localOrder[column.status] = nil
         if !succeeded { shakes[issue.key, default: 0] += 1 }
     }
 
@@ -168,7 +199,8 @@ final class KanbanBoardModel {
         // The card goes first; the answer decides whether it stays. The column's
         // own category stands in until a transition says otherwise.
         let category = allColumns.first { $0.status == status }?.category ?? issue.statusCategory
-        pending[issue.key] = (status, category)
+        let boardColumn = jira.boardConfiguration?.columns.first { $0.name == status }
+        pending[issue.key] = (status, category, boardColumn?.statusIDs.first)
 
         let transitions: [JiraTransition]
         do {
@@ -178,7 +210,7 @@ final class KanbanBoardModel {
             return
         }
 
-        let options = transitions.filter { $0.toStatus == status }
+        let options = KanbanBoardColumns.transitions(transitions, into: status, using: jira.boardConfiguration)
 
         switch options.count {
         case 0:
@@ -200,7 +232,7 @@ final class KanbanBoardModel {
     }
 
     private func perform(_ issue: JiraIssue, _ transition: JiraTransition) async {
-        pending[issue.key] = (transition.toStatus, transition.toStatusCategory)
+        pending[issue.key] = (transition.toStatus, transition.toStatusCategory, transition.toStatusID)
 
         let succeeded = await jira.move(issue, to: transition)
 

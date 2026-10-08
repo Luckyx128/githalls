@@ -51,6 +51,7 @@ struct KanbanBoardView: View {
         .task(id: Reload(token: viewModel.reloadToken, isConfigured: viewModel.isConfigured)) {
             guard viewModel.isConfigured else { return }
             await viewModel.refresh()
+            await board.prepareBoards()
         }
     }
 
@@ -102,6 +103,19 @@ struct KanbanBoardView: View {
     /// Which columns the board shows; hidden ones come back from here.
     private var columnsMenu: some View {
         Menu {
+            if !viewModel.boards.isEmpty {
+                Picker("Columns from", selection: Binding(
+                    get: { viewModel.selectedBoard?.id },
+                    set: { id in Task { await board.chooseBoard(viewModel.boards.first { $0.id == id }) } }
+                )) {
+                    Text("Statuses on the board").tag(Int?.none)
+                    ForEach(viewModel.boards) { Text($0.name).tag(Int?.some($0.id)) }
+                }
+                .pickerStyle(.menu)
+
+                Divider()
+            }
+
             ForEach(board.allColumns) { column in
                 Toggle(column.status, isOn: Binding(
                     get: { !board.layout.hidden.contains(column.status) },
@@ -113,7 +127,6 @@ struct KanbanBoardView: View {
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
-        .disabled(board.allColumns.isEmpty)
         .help("Show or hide columns")
     }
 
