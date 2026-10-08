@@ -55,6 +55,8 @@ struct JiraIssue: Identifiable, Equatable, Hashable, Codable {
     var storyPoints: Double?
     var parentKey: String?
     var parentSummary: String?
+    var subtasks: [JiraIssueRef]?
+    var links: [JiraIssueLink]?
 
     var id: String { key }
 

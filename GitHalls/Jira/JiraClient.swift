@@ -27,6 +27,9 @@ struct JiraClient {
         try await Task.sleep(for: .seconds(seconds))
     }
 
+    /// Jira's cap per search page.
+    static let searchPageSize = 100
+
     private static let searchPath = "/rest/api/3/search/jql"
     static let issuePath = "/rest/api/3/issue/"
 
@@ -37,7 +40,8 @@ struct JiraClient {
     /// What the issue window shows on top of the card.
     private static let detailFields = [
         "summary", "status", "issuetype", "priority", "updated", "created",
-        "assignee", "reporter", "labels", "description", "duedate", "components", "parent"
+        "assignee", "reporter", "labels", "description", "duedate", "components", "parent",
+        "subtasks", "issuelinks"
     ]
 
     func myself() async throws -> (accountID: String, displayName: String) {
@@ -48,20 +52,41 @@ struct JiraClient {
         return (accountID, object["displayName"] as? String ?? credentials.email)
     }
 
+    /// Up to `limit` issues, following the page cursor as far as it takes.
     func search(jql: String, limit: Int = 50) async throws -> [JiraIssue] {
+        guard limit > 0 else { return [] }
+
+        var issues: [JiraIssue] = []
+        var token: String?
+
+        for _ in 0..<Self.maxPages {
+            let page = try await searchPage(jql: jql, limit: min(limit - issues.count, Self.searchPageSize), pageToken: token)
+            issues += page.items
+            token = page.nextPageToken
+            if token == nil || issues.count >= limit { break }
+        }
+        return issues
+    }
+
+    /// One page of a JQL search; hand `nextPageToken` back for the next.
+    func searchPage(jql: String, limit: Int = 50, pageToken: String? = nil) async throws -> JiraPage<JiraIssue> {
         var request = request(path: Self.searchPath, method: "POST")
-        request.httpBody = try JSONSerialization.data(withJSONObject: [
+        var body: [String: Any] = [
             "jql": jql,
             "fields": Self.cardFields,
-            "maxResults": limit
-        ])
+            "maxResults": max(1, min(limit, Self.searchPageSize))
+        ]
+        if let pageToken { body["nextPageToken"] = pageToken }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let json = try await send(request)
         guard let object = json as? [String: Any],
               let issues = object["issues"] as? [[String: Any]]
         else { throw JiraError.malformedResponse }
 
-        return issues.compactMap { Self.issue(from: $0) }
+        // `isLast` can be missing on older answers; no token is the same thing.
+        let next = object["isLast"] as? Bool == true ? nil : object["nextPageToken"] as? String
+        return JiraPage(items: issues.compactMap { Self.issue(from: $0) }, nextStart: nil, nextPageToken: next)
     }
 
     /// One issue with its description and people, for the detail window.
@@ -230,7 +255,9 @@ struct JiraClient {
             components: (fields["components"] as? [[String: Any]])?.compactMap { $0["name"] as? String },
             storyPoints: storyPointsField.flatMap { fields[$0] as? Double },
             parentKey: (fields["parent"] as? [String: Any])?["key"] as? String,
-            parentSummary: ((fields["parent"] as? [String: Any])?["fields"] as? [String: Any])?["summary"] as? String
+            parentSummary: ((fields["parent"] as? [String: Any])?["fields"] as? [String: Any])?["summary"] as? String,
+            subtasks: (fields["subtasks"] as? [[String: Any]])?.compactMap { JiraIssueRef(json: $0) },
+            links: (fields["issuelinks"] as? [[String: Any]])?.compactMap { JiraIssueLink(json: $0) }
         )
     }
 

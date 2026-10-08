@@ -14,7 +14,13 @@ extension JiraADF {
         // reader has no notion of, and an edit of an existing description must
         // not flatten them. Until it learns nesting, such text takes the plain path.
         let hasNestedList = text.range(of: "(?m)^ +([•*-]|\\d+\\.) ", options: .regularExpression) != nil
-        return hasNestedList ? plainDocument(from: text) : JiraMarkdownADF.document(from: text)
+        let document = hasNestedList ? plainDocument(from: text) : JiraMarkdownADF.document(from: text)
+
+        // A document needs at least one block; empty text still has to be valid.
+        if (document["content"] as? [Any])?.isEmpty == true {
+            return ["type": "doc", "version": 1, "content": [["type": "paragraph", "content": [[String: Any]]()]]]
+        }
+        return document
     }
 
     /// The way back from `plainText(from:)`: plain text to an ADF document.
