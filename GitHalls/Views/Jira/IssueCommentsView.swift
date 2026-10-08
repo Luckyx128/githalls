@@ -107,7 +107,12 @@ struct IssueCommentsView: View {
                         isPosting = true
                         let text = newComment
                         // Cleared only on success, or a refused comment is lost.
-                        if await jiraViewModel.addComment(to: issueKey, text: text) { newComment = "" }
+                        if await jiraViewModel.addComment(to: issueKey, text: text) {
+                            newComment = ""
+                            loadError = nil
+                        } else {
+                            loadError = jiraViewModel.actionMessage
+                        }
                         isPosting = false
                     }
                 }

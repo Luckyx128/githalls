@@ -28,7 +28,11 @@ struct IssueRelationsView: View {
     }
 
     private var choices: [LinkChoice] {
-        linkTypes.flatMap { [LinkChoice(type: $0, direction: .outward), LinkChoice(type: $0, direction: .inward)] }
+        linkTypes.flatMap { type -> [LinkChoice] in
+            let outward = LinkChoice(type: type, direction: .outward)
+            // "relates to" reads the same from both ends; one entry says it.
+            return type.inward == type.outward ? [outward] : [outward, LinkChoice(type: type, direction: .inward)]
+        }
     }
 
     var body: some View {
@@ -81,8 +85,13 @@ struct IssueRelationsView: View {
                 errorMessage = "This project has no subtask type."
                 return
             }
-            _ = try await authoring.create(JiraNewIssue(projectKey: projectKey, issueTypeID: type.id,
-                                                       summary: title, parentKey: issue.key))
+            // Through the view model, so the board hears about the new card.
+            guard await jiraViewModel.create(JiraNewIssue(projectKey: projectKey, issueTypeID: type.id,
+                                                          summary: title, parentKey: issue.key)) != nil
+            else {
+                errorMessage = jiraViewModel.actionMessage
+                return
+            }
             subtaskTitle = ""
             errorMessage = nil
             issue = try await jiraViewModel.fetchIssue(key: issue.key)

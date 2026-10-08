@@ -14,6 +14,8 @@ struct IssueWorklogView: View {
     @State private var duration = ""
     @State private var note = ""
     @State private var loadError: String?
+    @State private var isLogging = false
+    @State private var deleting: JiraWorklog?
 
     private var worklogs: [JiraWorklog] { jiraViewModel.worklogsByIssue[issueKey] ?? [] }
 
@@ -37,7 +39,7 @@ struct IssueWorklogView: View {
                     Text(log.comment).lineLimit(1)
                     Spacer()
                     if !log.isPending {
-                        Button { Task { await jiraViewModel.deleteWorklog(on: issueKey, id: log.id) } } label: {
+                        Button { deleting = log } label: {
                             Image(systemName: "trash")
                         }
                         .buttonStyle(.plain)
@@ -51,11 +53,20 @@ struct IssueWorklogView: View {
 
             HStack {
                 TextField("1h 30m", text: $duration).frame(width: 90)
+                    .onSubmit { Task { await log() } }
                 TextField("What did you do? (optional)", text: $note)
+                    .onSubmit { Task { await log() } }
                 Button("Log") { Task { await log() } }
-                    .disabled(Self.seconds(from: duration) == nil)
+                    .disabled(isLogging || Self.seconds(from: duration) == nil)
             }
             .textFieldStyle(.roundedBorder)
+        }
+        .confirmationDialog("Delete this work log entry?", isPresented: Binding(
+            get: { deleting != nil }, set: { if !$0 { deleting = nil } }
+        ), presenting: deleting) { log in
+            Button("Delete", role: .destructive) {
+                Task { await jiraViewModel.deleteWorklog(on: issueKey, id: log.id) }
+            }
         }
         .task(id: issueKey) {
             do { try await jiraViewModel.loadWorklogs(for: issueKey) } catch { loadError = error.localizedDescription }
@@ -63,12 +74,18 @@ struct IssueWorklogView: View {
     }
 
     private func log() async {
-        guard let seconds = Self.seconds(from: duration) else { return }
+        guard !isLogging, let seconds = Self.seconds(from: duration) else { return }
+
+        isLogging = true
+        defer { isLogging = false }
 
         let text = note.trimmingCharacters(in: .whitespacesAndNewlines)
         if await jiraViewModel.logWork(on: issueKey, seconds: seconds, comment: text.isEmpty ? nil : text) {
             duration = ""
             note = ""
+            loadError = nil
+        } else {
+            loadError = jiraViewModel.actionMessage
         }
     }
 

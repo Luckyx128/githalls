@@ -14,6 +14,7 @@ struct IssueAttachmentsView: View {
     @State private var isImporting = false
     @State private var isWorking = false
     @State private var errorMessage: String?
+    @State private var deleting: JiraAttachment?
 
     private var attachments: [JiraAttachment] { jiraViewModel.attachmentsByIssue[issueKey] ?? [] }
 
@@ -37,7 +38,7 @@ struct IssueAttachmentsView: View {
                     Spacer()
                     Button { Task { await save(attachment) } } label: { Image(systemName: "arrow.down.circle") }
                         .help("Save a copy")
-                    Button { Task { await jiraViewModel.deleteAttachment(on: issueKey, id: attachment.id) } } label: {
+                    Button { deleting = attachment } label: {
                         Image(systemName: "trash")
                     }
                     .help("Delete attachment")
@@ -58,6 +59,13 @@ struct IssueAttachmentsView: View {
         }
         .fileImporter(isPresented: $isImporting, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
             if case .success(let urls) = result { Task { await upload(urls) } }
+        }
+        .confirmationDialog("Delete this attachment?", isPresented: Binding(
+            get: { deleting != nil }, set: { if !$0 { deleting = nil } }
+        ), presenting: deleting) { attachment in
+            Button("Delete \(attachment.filename)", role: .destructive) {
+                Task { await jiraViewModel.deleteAttachment(on: issueKey, id: attachment.id) }
+            }
         }
         .task(id: issueKey) {
             do { try await jiraViewModel.loadAttachments(for: issueKey) } catch { errorMessage = error.localizedDescription }
