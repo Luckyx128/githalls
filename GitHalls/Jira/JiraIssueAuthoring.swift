@@ -18,13 +18,26 @@ protocol JiraIssueAuthoring: Sendable {
     func create(_ issue: JiraNewIssue) async throws -> String
 }
 
+extension JiraClient: JiraIssueAuthoring {}
+
 /// Where the screens get their authoring backend. One line to change when the
 /// real client conforms.
 enum JiraAuthoringFactory {
     static func make() -> any JiraIssueAuthoring {
-        // TODO(atlas): return JiraClient(credentials:) once it conforms.
-        StubJiraAuthoring()
+        if let credentials = JiraCredentialsStore.current { JiraClient(credentials: credentials) } else { UnconfiguredAuthoring() }
     }
+}
+
+/// What the screens talk to before an account is connected: every call says so.
+struct UnconfiguredAuthoring: JiraIssueAuthoring {
+    private var error: Error { JiraCredentialsError.missing }
+
+    func projects() async throws -> [JiraProject] { throw error }
+    func issueTypes(projectKey: String) async throws -> [JiraIssueType] { throw error }
+    func createFields(projectKey: String, issueTypeID: String) async throws -> [JiraCreateField] { throw error }
+    func searchAssignableUsers(query: String, projectKey: String) async throws -> [JiraUser] { throw error }
+    func priorities() async throws -> [JiraFieldOption] { throw error }
+    func create(_ issue: JiraNewIssue) async throws -> String { throw error }
 }
 
 /// Canned answers for previews, tests and the time before the real client lands.
