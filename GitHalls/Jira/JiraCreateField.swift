@@ -7,6 +7,18 @@ import Foundation
 
 enum JiraFieldKind: Equatable, Hashable, Sendable {
     case string, number, date, dateTime, user, option, priority, labels, components, adf
+
+    /// `timetracking`: written as `{"originalEstimate": "2h 30m"}`.
+    case timeTracking
+
+    /// The Team field; written as the team id string.
+    case team
+
+    /// An array of options, versions, groups…: written as `[{"id": …}]`.
+    case multiOption
+
+    /// An array of users: written as `[{"accountId": …}]`.
+    case userList
     case other(String)
 }
 
@@ -20,41 +32,51 @@ struct JiraCreateField: Identifiable, Equatable, Hashable, Sendable {
     var allowed: [JiraFieldOption] = []
     var hasDefault = false
 
+    /// Where Jira says candidates for this field can be searched, when it does
+    /// (the Team field, user and group pickers).
+    var autoCompleteURL: String?
+
     var id: String { key }
 
     init(key: String, name: String, required: Bool = false, kind: JiraFieldKind = .string,
-         allowed: [JiraFieldOption] = [], hasDefault: Bool = false) {
+         allowed: [JiraFieldOption] = [], hasDefault: Bool = false, autoCompleteURL: String? = nil) {
         self.key = key
         self.name = name
         self.required = required
         self.kind = kind
         self.allowed = allowed
         self.hasDefault = hasDefault
+        self.autoCompleteURL = autoCompleteURL
     }
 
     init?(json raw: [String: Any]) {
         guard let key = raw["fieldId"] as? String ?? raw["key"] as? String else { return nil }
 
+        let allowed = (raw["allowedValues"] as? [[String: Any]] ?? []).compactMap(JiraFieldOption.init(json:))
         self.init(
             key: key,
             name: raw["name"] as? String ?? key,
             required: raw["required"] as? Bool ?? false,
-            kind: Self.kind(of: raw["schema"] as? [String: Any]),
-            allowed: (raw["allowedValues"] as? [[String: Any]] ?? []).compactMap(JiraFieldOption.init(json:)),
-            hasDefault: raw["hasDefaultValue"] as? Bool ?? false
+            kind: Self.kind(of: raw["schema"] as? [String: Any], hasAllowedValues: !allowed.isEmpty),
+            allowed: allowed,
+            hasDefault: raw["hasDefaultValue"] as? Bool ?? false,
+            autoCompleteURL: raw["autoCompleteUrl"] as? String
         )
     }
 
-    private static func kind(of schema: [String: Any]?) -> JiraFieldKind {
+    private static func kind(of schema: [String: Any]?, hasAllowedValues: Bool) -> JiraFieldKind {
         let type = schema?["type"] as? String ?? ""
         let items = schema?["items"] as? String
         let system = schema?["system"] as? String
+
+        let custom = schema?["custom"] as? String ?? ""
+        if system == "timetracking" || type == "timetracking" { return .timeTracking }
+        if type == "team" || custom.contains("atlassian-team") || custom.contains("teams-custom-field-team") { return .team }
 
         switch type {
         case "string":
             // v3 takes rich-text fields as ADF: description, environment and
             // paragraph custom fields.
-            let custom = schema?["custom"] as? String ?? ""
             return system == "description" || system == "environment" || custom.hasSuffix(":textarea") ? .adf : .string
         case "number": return .number
         case "date": return .date
@@ -66,7 +88,9 @@ struct JiraCreateField: Identifiable, Equatable, Hashable, Sendable {
             switch items {
             case "string": return .labels
             case "component": return .components
-            default: return .other("array<\(items ?? "?")>")
+            case "user": return .userList
+            case "option", "version", "group", "project": return .multiOption
+            default: return hasAllowedValues ? .multiOption : .other("array<\(items ?? "?")>")
             }
         default: return .other(type)
         }

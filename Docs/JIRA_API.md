@@ -134,3 +134,6 @@ func assignableUsers(query:, projectKey:) async throws -> [JiraUser]
 * Tests inject `JiraViewModel.clientFactory` and `JiraClient(credentials:session:)` (see `GitHallsTests/JiraMock.swift`).
 * 429: retried twice when `Retry-After` <= 30s (`maxRetries`, `maxRetryWait`); otherwise `JiraError.rateLimited`.
 * Descriptions/comments go through `JiraADF.document(from:)` = `JiraMarkdownADF` (nested plain-text lists fall back to a plain builder).
+* Required-field support: `JiraError.fieldErrors([String: String])` (Jira's `errors` object, keyed by field id);
+  `JiraFieldKind` `.timeTracking/.team/.multiOption/.userList`; `JiraCreateField.autoCompleteURL`;
+  `JiraClient.teams(query:autoCompleteURL:)`.

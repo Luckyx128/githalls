@@ -321,3 +321,126 @@ struct JiraADFBuilderTests {
         #expect(roundTrip("a\n\n\nb") == "a\nb")
     }
 }
+
+struct JiraRequiredFieldTests {
+    /// A project that insists on Description, Team and Original Estimate.
+    private static let createmeta = """
+    {"total":6,"fields":[
+      {"fieldId":"summary","name":"Summary","required":true,"schema":{"type":"string","system":"summary"}},
+      {"fieldId":"description","name":"Description","required":true,"schema":{"type":"string","system":"description"}},
+      {"fieldId":"timetracking","name":"Original Estimate","required":true,"schema":{"type":"timetracking","system":"timetracking"}},
+      {"fieldId":"customfield_10001","name":"Team","required":true,
+       "schema":{"type":"team","custom":"com.atlassian.jira.plugin.system.customfieldtypes:atlassian-team","customId":10001},
+       "autoCompleteUrl":"https://SITE/gateway/api/teams/suggestions?query="},
+      {"fieldId":"fixVersions","name":"Fix versions","required":false,"schema":{"type":"array","items":"version","system":"fixVersions"},
+       "allowedValues":[{"id":"1","name":"1.0"}]},
+      {"fieldId":"customfield_10040","name":"Reviewers","required":false,"schema":{"type":"array","items":"user","custom":"x:multiuserpicker"}},
+      {"fieldId":"customfield_10041","name":"Platforms","required":false,"schema":{"type":"array","items":"option","custom":"x:multiselect"},
+       "allowedValues":[{"id":"5","value":"iOS"}]}
+    ]}
+    """
+
+    @Test func createmetaKindsIncludeTimeTrackingTeamAndMultiValueFields() async throws {
+        let mock = MockJira { _ in MockReply(json: Self.createmeta) }
+
+        let fields = try await mock.client.createFields(projectKey: "APP", issueTypeID: "10")
+
+        #expect(fields.map(\.kind) == [.string, .adf, .timeTracking, .team, .multiOption, .userList, .multiOption])
+        #expect(fields.filter(\.required).map(\.key) == ["summary", "description", "timetracking", "customfield_10001"])
+        #expect(fields[3].autoCompleteURL == "https://SITE/gateway/api/teams/suggestions?query=")
+        #expect(fields[0].autoCompleteURL == nil)
+        #expect(fields[6].allowed == [JiraFieldOption(id: "5", label: "iOS")])
+    }
+
+    @Test func validationErrorsKeepEveryFieldMessage() async {
+        let mock = MockJira { _ in
+            MockReply(status: 400, json: """
+            {"errorMessages":[],"errors":{"description":"Description is required.","customfield_10001":"Team is required."}}
+            """)
+        }
+
+        do {
+            _ = try await mock.client.create(JiraNewIssue(projectKey: "APP", issueTypeID: "10", summary: "x"))
+            Issue.record("expected a validation error")
+        } catch JiraError.fieldErrors(let errors) {
+            #expect(errors == ["description": "Description is required.", "customfield_10001": "Team is required."])
+            #expect(JiraError.fieldErrors(errors).localizedDescription == "Team is required. Description is required."
+                    || JiraError.fieldErrors(errors).localizedDescription == "Description is required. Team is required.")
+        } catch {
+            Issue.record("unexpected error \(error)")
+        }
+    }
+
+    @Test func fieldErrorMessagesAreJoinedInFieldOrder() {
+        let error = JiraError.fieldErrors(["b": "Second.", "a": "First."])
+        #expect(error.errorDescription == "First. Second.")
+    }
+
+    @Test func errorMessagesWithoutFieldsStayAnHttpError() async {
+        let mock = MockJira { _ in MockReply(status: 400, json: #"{"errorMessages":["Nope"],"errors":{}}"#) }
+        do {
+            _ = try await mock.client.projects()
+            Issue.record("expected an error")
+        } catch JiraError.http(let status, let message) {
+            #expect(status == 400 && message == "Nope")
+        } catch {
+            Issue.record("unexpected error \(error)")
+        }
+    }
+
+    @Test func createSendsEstimateTeamAndDescriptionAsGiven() async throws {
+        let mock = MockJira { _ in MockReply(status: 201, json: #"{"key":"APP-1"}"#) }
+        var issue = JiraNewIssue(projectKey: "APP", issueTypeID: "10", summary: "x")
+        issue.description = "Why"
+        issue.extra = [
+            .custom("timetracking", .object(["originalEstimate": .string("2h 30m")])),
+            .custom("customfield_10001", .string("team-uuid")),
+            .custom("fixVersions", .array([.object(["id": .string("1")])]))
+        ]
+
+        _ = try await mock.client.create(issue)
+
+        let fields = try #require(mock.requests[0].fields)
+        #expect((fields["timetracking"] as? [String: String]) == ["originalEstimate": "2h 30m"])
+        #expect(fields["customfield_10001"] as? String == "team-uuid")
+        #expect((fields["fixVersions"] as? [[String: String]]) == [["id": "1"]])
+        #expect(JiraADF.plainText(from: fields["description"]) == "Why")
+    }
+
+    @Test func teamsSearchTheFieldsAutoCompleteUrl() async throws {
+        let mock = MockJira { _ in
+            MockReply(json: #"{"teams":[{"id":"t-1","name":"Platform"},{"id":42,"title":"Mobile"},{"nope":1}]}"#)
+        }
+        let url = "https://\(mock.host)/gateway/api/teams/suggestions?query="
+
+        let teams = try await mock.client.teams(query: "pla t", autoCompleteURL: url)
+
+        #expect(teams == [JiraFieldOption(id: "t-1", label: "Platform"), JiraFieldOption(id: "42", label: "Mobile")])
+        #expect(mock.requests[0].path == "/gateway/api/teams/suggestions")
+        #expect(mock.requests[0].query["query"] == "pla t")
+        #expect(mock.requests[0].headers["Authorization"]?.hasPrefix("Basic ") == true)
+    }
+
+    @Test func teamsAcceptABareArrayAndAUrlWithoutQueryPlaceholder() async throws {
+        let mock = MockJira { _ in MockReply(json: #"[{"id":"t-9","displayName":"Ops"}]"#) }
+
+        let teams = try await mock.client.teams(query: "o", autoCompleteURL: "https://\(mock.host)/x?limit=5")
+
+        #expect(teams == [JiraFieldOption(id: "t-9", label: "Ops")])
+        #expect(mock.requests[0].query["limit"] == "5" && mock.requests[0].query["query"] == "o")
+    }
+
+    @Test func teamsRefuseAnAutoCompleteUrlOffTheSite() async {
+        let mock = MockJira { _ in MockReply(json: "[]") }
+        await #expect(throws: JiraError.self) {
+            _ = try await mock.client.teams(query: "x", autoCompleteURL: "https://evil.example/teams?query=")
+        }
+        #expect(mock.requests.isEmpty)
+    }
+
+    @Test func teamsFallBackToTheDefaultPicker() async throws {
+        let mock = MockJira { _ in MockReply(json: #"[{"id":"1","name":"A"}]"#) }
+        _ = try await mock.client.teams(query: "a")
+        #expect(mock.requests[0].path == "/rest/teams/1.0/teams/find")
+    }
+}
