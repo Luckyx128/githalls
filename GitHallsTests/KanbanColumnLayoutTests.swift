@@ -169,3 +169,13 @@ struct KanbanUnmappedTests {
         #expect(groups[1].issues.count == 1)
     }
 }
+
+struct KanbanDisambiguatedColumnTests {
+    @Test func movingIntoANotOnBoardColumnMatchesTheRealStatusName() {
+        let moves = [JiraTransition(id: "c", name: "Finish", toStatus: "Done", toStatusCategory: "done", toStatusID: "99")]
+        let config = JiraBoardConfiguration(boardID: 1, name: "B", columns: [JiraBoardColumn(name: "Done", statusIDs: ["4"])])
+
+        let found = KanbanBoardColumns.transitions(moves, into: "Done" + KanbanBoardColumns.unmappedSuffix, using: config)
+        #expect(found.map(\.id) == ["c"])
+    }
+}

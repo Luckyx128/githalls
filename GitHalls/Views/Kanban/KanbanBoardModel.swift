@@ -139,11 +139,16 @@ final class KanbanBoardModel {
 
         if jira.boards.isEmpty { await jira.loadBoards() }
 
-        guard jira.selectedBoard == nil,
-              case let id = store.defaults.integer(forKey: boardKey()), id != 0,
-              let board = jira.boards.first(where: { $0.id == id }) else { return }
+        let saved = store.defaults.integer(forKey: boardKey())
+        guard jira.selectedBoard?.id != (saved == 0 ? nil : saved) else { return }
 
-        await jira.selectBoard(board)
+        // The query changed to one with another choice: follow it.
+        if let board = jira.boards.first(where: { $0.id == saved }) {
+            await jira.selectBoard(board)
+        } else if saved == 0 {
+            jira.selectedBoard = nil
+            jira.boardConfiguration = nil
+        }
     }
 
     /// nil goes back to columns made from the statuses on the board.
@@ -201,6 +206,7 @@ final class KanbanBoardModel {
         let reordered = KanbanOrdering.moving(issue.key, before: target, in: keys)
         guard reordered != keys, let request = KanbanOrdering.request(for: issue.key, in: reordered) else { return }
 
+        let previous = localOrder[column.status]
         localOrder[column.status] = reordered
         let succeeded = await ranker.rank(request)
 
@@ -208,7 +214,7 @@ final class KanbanBoardModel {
         // and a column can hold several. The next search brings Jira's order,
         // and `settle` lets this one go.
         if !succeeded {
-            localOrder[column.status] = nil
+            localOrder[column.status] = previous
             shakes[issue.key, default: 0] += 1
         }
     }

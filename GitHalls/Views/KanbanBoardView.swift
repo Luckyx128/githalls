@@ -100,7 +100,10 @@ struct KanbanBoardView: View {
             .disabled(!viewModel.isConfigured)
 
             Button {
-                Task { await viewModel.refresh() }
+                Task {
+                    await viewModel.refresh()
+                    board.settle()
+                }
             } label: {
                 if viewModel.isLoading {
                     ProgressView().controlSize(.small)

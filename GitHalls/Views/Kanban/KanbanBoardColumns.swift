@@ -13,6 +13,9 @@ import Foundation
 /// still exists to be dropped onto. Issues the board does not map (or with no
 /// status id yet) keep a column of their own status after the board's.
 enum KanbanBoardColumns {
+    /// Added to an unmapped status that shares a board column's name.
+    static let unmappedSuffix = " (not on board)"
+
     static func group(_ issues: [JiraIssue], using configuration: JiraBoardConfiguration?) -> [JiraIssueGroup] {
         guard let configuration, !configuration.columns.isEmpty else { return JiraIssueGrouping.byStatus(issues) }
 
@@ -34,7 +37,7 @@ enum KanbanBoardColumns {
         let taken = Set(boardColumns.map(\.status))
         let extra = JiraIssueGrouping.byStatus(unmapped).map { group in
             taken.contains(group.status)
-                ? JiraIssueGroup(status: "\(group.status) (not on board)", category: group.category, issues: group.issues)
+                ? JiraIssueGroup(status: group.status + unmappedSuffix, category: group.category, issues: group.issues)
                 : group
         }
 
@@ -48,7 +51,8 @@ enum KanbanBoardColumns {
         if let boardColumn = configuration?.columns.first(where: { $0.name == column }) {
             return transitions.filter { boardColumn.statusIDs.contains($0.toStatusID ?? "") || $0.toStatus == column }
         }
-        return transitions.filter { $0.toStatus == column }
+        let status = column.hasSuffix(unmappedSuffix) ? String(column.dropLast(unmappedSuffix.count)) : column
+        return transitions.filter { $0.toStatus == status }
     }
 
     /// An empty column has no card to say what it is. Position is a fair guess:
