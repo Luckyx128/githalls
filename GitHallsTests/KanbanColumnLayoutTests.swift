@@ -98,3 +98,14 @@ struct KanbanOrderingTests {
         #expect(KanbanOrdering.request(for: "A", in: ["A"]) == nil)
     }
 }
+
+struct KanbanShiftTests {
+    @Test func shiftStepsOverHiddenColumns() {
+        let groups = ["A", "B", "C"].map { JiraIssueGroup(status: $0, category: "new", issues: []) }
+        var layout = KanbanColumnLayout()
+        layout.toggleHidden("B")
+
+        layout.shift("A", by: 1, within: groups)
+        #expect(layout.ordered(groups).map(\.status) == ["B", "C", "A"])
+    }
+}

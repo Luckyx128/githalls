@@ -11,8 +11,8 @@ struct KanbanCardView: View {
     let issue: JiraIssue
     @Bindable var viewModel: JiraViewModel
 
-    /// Columns on either side, for the accessibility moves.
-    let neighbours: [String]
+    /// Where the accessibility moves can go.
+    let otherColumns: [String]
     let shakeCount: Int
     let onOpen: () -> Void
     let onMove: (String) -> Void
@@ -52,8 +52,10 @@ struct KanbanCardView: View {
             .accessibilityElement(children: .combine)
             .accessibilityHint("Drag to another column to move it")
             .accessibilityActions {
-                ForEach(neighbours, id: \.self) { status in
-                    Button("Move to \(status)") { onMove(status) }
+                if !isBusy {
+                    ForEach(otherColumns, id: \.self) { status in
+                        Button("Move to \(status)") { onMove(status) }
+                    }
                 }
             }
     }

@@ -44,14 +44,20 @@ struct KanbanColumnLayout: Codable, Equatable {
         order = statuses
     }
 
-    /// Moves `status` one place; the keyboard's way to reorder columns.
+    /// Moves `status` past the next visible column; the keyboard's way to
+    /// reorder. Hidden columns are stepped over, or a press would swap with
+    /// something the person cannot see.
     mutating func shift(_ status: String, by offset: Int, within groups: [JiraIssueGroup]) {
         let statuses = ordered(groups).map(\.status)
+        let step = offset < 0 ? -1 : 1
 
-        guard let from = statuses.firstIndex(of: status),
-              statuses.indices.contains(from + offset) else { return }
+        guard let from = statuses.firstIndex(of: status) else { return }
 
-        move(status, onto: statuses[from + offset], within: groups)
+        var to = from + step
+        while statuses.indices.contains(to), hidden.contains(statuses[to]) { to += step }
+        guard statuses.indices.contains(to) else { return }
+
+        move(status, onto: statuses[to], within: groups)
     }
 
     mutating func toggleCollapsed(_ status: String) {

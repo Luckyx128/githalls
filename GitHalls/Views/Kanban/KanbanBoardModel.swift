@@ -27,8 +27,22 @@ final class KanbanBoardModel {
     private let store: KanbanLayoutStore
     private let ranker: any KanbanRanking
 
-    private(set) var layout = KanbanColumnLayout()
-    private var layoutQueryID: String?
+    /// Layouts read from disk so far. Not observed: filling it is a cache fill,
+    /// and a view is allowed to cause that while it reads. Changes go through
+    /// `revision`, which is.
+    @ObservationIgnored private var layouts: [String: KanbanColumnLayout] = [:]
+    private var revision = 0
+
+    var layout: KanbanColumnLayout {
+        _ = revision
+        let id = jira.selectedQuery.id
+
+        if let cached = layouts[id] { return cached }
+
+        let loaded = store.load(id)
+        layouts[id] = loaded
+        return loaded
+    }
 
     /// Cards already shown in their new column, by key.
     private var pending: [String: (status: String, category: String)] = [:]
@@ -52,8 +66,7 @@ final class KanbanBoardModel {
 
     /// Every column in the person's order, with in-flight moves applied.
     var allColumns: [JiraIssueGroup] {
-        syncLayout()
-        return layout.ordered(applyingPending(to: jira.columns))
+        layout.ordered(applyingPending(to: jira.columns))
     }
 
     var visibleColumns: [JiraIssueGroup] { allColumns.filter { !layout.hidden.contains($0.status) } }
@@ -92,20 +105,14 @@ final class KanbanBoardModel {
         return result
     }
 
-    /// Reads the layout in for the query on screen. Not observation-visible
-    /// state until it changes, so loading from a getter is safe.
-    private func syncLayout() {
-        let id = jira.selectedQuery.id
-        guard layoutQueryID != id else { return }
-
-        layoutQueryID = id
-        layout = store.load(id)
-    }
-
     private func mutateLayout(_ change: (inout KanbanColumnLayout) -> Void) {
-        syncLayout()
-        change(&layout)
-        store.save(layout, for: jira.selectedQuery.id)
+        var updated = layout
+        change(&updated)
+
+        let id = jira.selectedQuery.id
+        layouts[id] = updated
+        revision += 1
+        store.save(updated, for: id)
     }
 
     func moveColumn(_ status: String, onto target: String) {
@@ -158,6 +165,11 @@ final class KanbanBoardModel {
     }
 
     private func requestMove(_ issue: JiraIssue, to status: String) async {
+        // The card goes first; the answer decides whether it stays. The column's
+        // own category stands in until a transition says otherwise.
+        let category = allColumns.first { $0.status == status }?.category ?? issue.statusCategory
+        pending[issue.key] = (status, category)
+
         let transitions: [JiraTransition]
         do {
             transitions = try await jira.transitions(for: issue)
@@ -174,6 +186,7 @@ final class KanbanBoardModel {
         case 1:
             await perform(issue, options[0])
         default:
+            pending[issue.key] = nil
             choice = KanbanMoveChoice(issue: issue, options: options)
         }
     }
@@ -197,6 +210,7 @@ final class KanbanBoardModel {
 
     /// Nothing was optimistic yet, so there is nothing to undo: say why, shake.
     private func refuse(_ issue: JiraIssue, _ message: String) {
+        pending[issue.key] = nil
         jira.actionFailed = true
         jira.actionMessage = message
         shakes[issue.key, default: 0] += 1

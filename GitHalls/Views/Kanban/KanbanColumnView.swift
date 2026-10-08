@@ -53,7 +53,7 @@ struct KanbanColumnView: View {
                         KanbanCardView(
                             issue: issue,
                             viewModel: viewModel,
-                            neighbours: neighbours,
+                            otherColumns: otherColumns,
                             shakeCount: board.shakes[issue.key] ?? 0,
                             onOpen: { onOpen(issue) },
                             onMove: { board.drop(cardKey: issue.key, onto: $0) }
@@ -170,6 +170,14 @@ struct KanbanColumnView: View {
         .buttonStyle(.plain)
         .pointerStyle(.link)
         .help("Expand \(column.status)")
+        .draggable(KanbanDragItem.column(status: column.status)) {
+            Text(column.status)
+                .font(.subheadline.weight(.semibold))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(.background.secondary, in: RoundedRectangle(cornerRadius: 6))
+                .shadow(radius: 8, y: 4)
+        }
         .accessibilityLabel("Expand \(column.status), \(column.count) issues")
     }
 
@@ -192,12 +200,10 @@ struct KanbanColumnView: View {
         }
     }
 
-    /// The columns either side, so a card can be moved without a pointer.
-    private var neighbours: [String] {
-        let all = board.visibleColumns.map(\.status)
-        guard let index = all.firstIndex(of: column.status) else { return [] }
-
-        return [index - 1, index + 1].filter(all.indices.contains).map { all[$0] }
+    /// Every other column on the board: a workflow can jump straight to Done,
+    /// and a pointer-free move should be able to as well.
+    private var otherColumns: [String] {
+        board.visibleColumns.map(\.status).filter { $0 != column.status }
     }
 
     @ViewBuilder
