@@ -49,6 +49,7 @@ struct IssueWindowView: View {
             VStack(alignment: .leading, spacing: 16) {
                 issueBox
                 descriptionBox
+                IssueCommentsView(issueKey: detail.key, jiraViewModel: jiraViewModel)
                 branchBox
             }
             .padding(20)
