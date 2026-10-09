@@ -39,7 +39,9 @@ struct ContentView: View {
                     KanbanSidebarView(viewModel: jiraViewModel)
                 }
             }
-            .navigationSplitViewColumnWidth(min: 240, ideal: 280)
+            // Capped: past this the detail runs out of room and the split
+            // view grows the window instead, pushing it off the screen.
+            .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 420)
         } detail: {
             switch viewModel.sidebarMode {
             case .changes:
