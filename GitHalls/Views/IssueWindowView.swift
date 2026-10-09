@@ -16,6 +16,7 @@ struct IssueWindowView: View {
     let issue: JiraIssue
     @Bindable var jiraViewModel: JiraViewModel
     @Bindable var repositoryViewModel: RepositoryViewModel
+    @Bindable var clockifyViewModel: ClockifyViewModel
 
     /// Starts as the card the board handed over, and is replaced by the full
     /// issue once Jira answers.
@@ -38,10 +39,12 @@ struct IssueWindowView: View {
 
     private var isBusy: Bool { jiraViewModel.busyIssues.contains(detail.key) }
 
-    init(issue: JiraIssue, jiraViewModel: JiraViewModel, repositoryViewModel: RepositoryViewModel) {
+    init(issue: JiraIssue, jiraViewModel: JiraViewModel, repositoryViewModel: RepositoryViewModel,
+         clockifyViewModel: ClockifyViewModel) {
         self.issue = issue
         self.jiraViewModel = jiraViewModel
         self.repositoryViewModel = repositoryViewModel
+        self.clockifyViewModel = clockifyViewModel
         _detail = State(initialValue: issue)
     }
 
@@ -53,6 +56,7 @@ struct IssueWindowView: View {
                 IssueRelationsView(issue: $detail, jiraViewModel: jiraViewModel)
                 IssueAttachmentsView(issueKey: detail.key, jiraViewModel: jiraViewModel)
                 IssueWorklogView(issueKey: detail.key, jiraViewModel: jiraViewModel)
+                IssueClockifyView(issueKey: detail.key, summary: detail.summary, clockify: clockifyViewModel)
                 IssueCommentsView(issueKey: detail.key, jiraViewModel: jiraViewModel)
                 branchBox
             }

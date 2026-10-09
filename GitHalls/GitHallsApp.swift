@@ -15,6 +15,10 @@ struct GitHallsApp: App {
     /// and need the same Jira state the board is showing.
     @State private var jiraViewModel = JiraViewModel()
 
+    /// One for the app: Clockify runs one timer per user, and every issue
+    /// window has to show the same one.
+    @State private var clockifyViewModel = ClockifyViewModel()
+
     var body: some Scene {
         WindowGroup {
             ContentView(viewModel: viewModel, jiraViewModel: jiraViewModel)
@@ -27,7 +31,8 @@ struct GitHallsApp: App {
                 IssueWindowView(
                     issue: issue,
                     jiraViewModel: jiraViewModel,
-                    repositoryViewModel: viewModel
+                    repositoryViewModel: viewModel,
+                    clockifyViewModel: clockifyViewModel
                 )
             }
         }
@@ -39,6 +44,8 @@ struct GitHallsApp: App {
                     .tabItem { Label("Git Identities", systemImage: "person.2") }
                 JiraSettingsView()
                     .tabItem { Label("Jira", systemImage: "checklist") }
+                ClockifySettingsView(clockify: clockifyViewModel)
+                    .tabItem { Label("Clockify", systemImage: "timer") }
                 CodeSettingsView()
                     .tabItem { Label("Code", systemImage: "chevron.left.forwardslash.chevron.right") }
                 EditorSettingsView()
