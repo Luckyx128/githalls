@@ -245,4 +245,19 @@ extension GitHubService {
         let data = Data(result.standardOutput.utf8)
         return (try? JSONDecoder().decode([PullRequestSummary].self, from: data))?.first
     }
+
+    /// Every pull request from `head`, in any state and into any base — one
+    /// branch can have one into "dev" merged and one into "homologacao" still
+    /// waiting. Newest first. Silent on every failure, like `openPullRequest`.
+    func pullRequests(at repoURL: URL, head: String) async -> [PullRequestStatus] {
+        guard let result = try? await run(
+            ["pr", "list", "--head", head, "--state", "all", "--limit", "20",
+             "--json", "number,title,url,state,baseRefName,reviewDecision"],
+            in: repoURL
+        ), result.terminationStatus == 0 else {
+            return []
+        }
+        let data = Data(result.standardOutput.utf8)
+        return (try? JSONDecoder().decode([PullRequestStatus].self, from: data)) ?? []
+    }
 }

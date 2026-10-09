@@ -73,7 +73,7 @@ struct IssueClockifyView: View {
 
     private var header: some View {
         HStack {
-            Text("Clockify").font(.headline)
+            Label("Clockify", systemImage: "timer").font(.headline).labelStyle(IssueSectionLabelStyle())
             Spacer()
             if clockify.workspaces.count > 1 {
                 Picker("Workspace", selection: Binding(

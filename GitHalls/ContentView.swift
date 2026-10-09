@@ -10,6 +10,14 @@ import SwiftUI
 struct ContentView: View {
     @Bindable var viewModel: RepositoryViewModel
     @Bindable var jiraViewModel: JiraViewModel
+    @Environment(IssueLinkCoordinator.self) private var issueLink
+
+    /// What the branch's issue depends on: the same branch name in another
+    /// repository is another branch.
+    private struct BranchIdentity: Equatable {
+        let repository: URL?
+        let branch: String?
+    }
 
     @State private var showBranchSwitcher = false
     @State private var sheet: ContentSheet?
@@ -43,15 +51,25 @@ struct ContentView: View {
             // view grows the window instead, pushing it off the screen.
             .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 420)
         } detail: {
-            switch viewModel.sidebarMode {
-            case .changes:
-                DiffDetailView(viewModel: viewModel)
-            case .history:
-                CommitDetailView(viewModel: viewModel)
-            case .kanban:
-                KanbanBoardView(viewModel: jiraViewModel)
+            Group {
+                switch viewModel.sidebarMode {
+                case .changes:
+                    DiffDetailView(viewModel: viewModel)
+                case .history:
+                    CommitDetailView(viewModel: viewModel)
+                case .kanban:
+                    KanbanBoardView(viewModel: jiraViewModel)
+                }
             }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                IssueLinkBanner(link: issueLink)
+            }
+            .animation(.snappy, value: issueLink.offer)
         }
+        .task(id: BranchIdentity(repository: viewModel.repositoryURL, branch: viewModel.currentBranch)) {
+            await issueLink.branchChanged()
+        }
+        .onChange(of: viewModel.branches) { _, _ in issueLink.branchesChanged() }
         .task {
             viewModel.openMostRecentRepositoryIfNeeded()
         }
@@ -61,6 +79,8 @@ struct ContentView: View {
                 if viewModel.selectedChangeID != nil {
                     await viewModel.loadDiff()
                 }
+                // A merge done in the browser shows up here.
+                await issueLink.refreshPullRequest()
             }
         }
         .toolbar { toolbarContent }
@@ -99,6 +119,10 @@ struct ContentView: View {
         // hidden the sidebar.
         ToolbarItem(placement: .navigation) {
             branchButton
+        }
+
+        ToolbarItem(placement: .navigation) {
+            CurrentIssueButton(link: issueLink)
         }
 
         // Trailing: what you do, most-used first.

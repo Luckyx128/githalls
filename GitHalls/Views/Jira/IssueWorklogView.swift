@@ -22,7 +22,7 @@ struct IssueWorklogView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("Work log").font(.headline)
+                Label("Work Log", systemImage: "clock").font(.headline).labelStyle(IssueSectionLabelStyle())
                 let total = worklogs.reduce(0) { $0 + $1.timeSpentSeconds }
                 if total > 0 { Text(JiraWorklog.format(seconds: total)).foregroundStyle(.secondary) }
             }

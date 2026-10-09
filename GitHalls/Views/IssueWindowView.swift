@@ -17,6 +17,7 @@ struct IssueWindowView: View {
     @Bindable var jiraViewModel: JiraViewModel
     @Bindable var repositoryViewModel: RepositoryViewModel
     @Bindable var clockifyViewModel: ClockifyViewModel
+    @Environment(IssueLinkCoordinator.self) private var link
 
     /// Starts as the card the board handed over, and is replaced by the full
     /// issue once Jira answers.
@@ -50,19 +51,35 @@ struct IssueWindowView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                issueBox
-                descriptionBox
-                IssueRelationsView(issue: $detail, jiraViewModel: jiraViewModel)
-                IssueAttachmentsView(issueKey: detail.key, jiraViewModel: jiraViewModel)
-                IssueWorklogView(issueKey: detail.key, jiraViewModel: jiraViewModel)
-                IssueClockifyView(issueKey: detail.key, summary: detail.summary, clockify: clockifyViewModel)
-                IssueCommentsView(issueKey: detail.key, jiraViewModel: jiraViewModel)
-                branchBox
+            // Grouped by what the user is doing: reading the issue, working on
+            // it in git, logging time, then everything around it.
+            VStack(alignment: .leading, spacing: 14) {
+                issueBox.issueCard()
+                descriptionBox.issueCard()
+
+                VStack(alignment: .leading, spacing: 16) {
+                    IssueBranchesView(issueKey: detail.key, link: link)
+                    Divider()
+                    branchBox
+                }
+                .issueCard()
+
+                VStack(alignment: .leading, spacing: 16) {
+                    IssueWorklogView(issueKey: detail.key, jiraViewModel: jiraViewModel)
+                    Divider()
+                    IssueClockifyView(issueKey: detail.key, summary: detail.summary, clockify: clockifyViewModel)
+                }
+                .issueCard()
+
+                IssueRelationsView(issue: $detail, jiraViewModel: jiraViewModel).issueCard()
+                IssueAttachmentsView(issueKey: detail.key, jiraViewModel: jiraViewModel).issueCard()
+                IssueCommentsView(issueKey: detail.key, jiraViewModel: jiraViewModel).issueCard()
             }
-            .padding(20)
+            .padding(16)
+            .frame(maxWidth: 920)
+            .frame(maxWidth: .infinity)
         }
-        .frame(minWidth: 520, minHeight: 520)
+        .frame(minWidth: 600, minHeight: 520)
         .navigationTitle(detail.key)
         .task(id: issue.key) {
             branchName = jiraViewModel.suggestedBranchName(for: issue)
@@ -258,9 +275,7 @@ struct IssueWindowView: View {
 
     private var descriptionBox: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("Description")
-                    .font(.headline)
+            IssueSectionHeader("Description", systemImage: "text.alignleft") {
                 if isLoadingDetail {
                     ProgressView().controlSize(.small)
                 }
@@ -305,8 +320,7 @@ struct IssueWindowView: View {
 
     private var branchBox: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Create branch from this issue")
-                .font(.headline)
+            IssueSectionHeader("New Branch", systemImage: "plus.square.on.square")
 
             HStack {
                 TextField("Branch name", text: $branchName)

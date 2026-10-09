@@ -48,16 +48,25 @@ enum CommitMessageComposer {
     /// by one trailer per co-author. A person already named in the description is
     /// not added twice. The body is nil when there is nothing to say beyond the
     /// summary, so the caller passes no empty `-m`.
+    ///
+    /// `issueKeys` are the Jira issues the branch belongs to. The ones the
+    /// message does not name already go in one `Refs:` trailer, which is enough
+    /// for Jira to list the commit on each issue and leaves the subject alone.
     static func compose(
         summary: String,
         description: String,
-        coAuthors: [CoAuthor]
+        coAuthors: [CoAuthor],
+        issueKeys: [String] = []
     ) -> (summary: String, body: String?) {
         let subject = summary.trimmingCharacters(in: .whitespacesAndNewlines)
         let body = description.trimmingCharacters(in: .whitespacesAndNewlines)
 
         var present = Set(trailerAuthors(in: body).map(\.id))
         var added: [String] = []
+        let missing = issueKeys.filter { !JiraIssueKey.mentions($0, in: subject + "\n" + body) }
+        if !missing.isEmpty {
+            added.append("Refs: " + missing.map { $0.uppercased() }.joined(separator: ", "))
+        }
         for author in coAuthors where present.insert(author.id).inserted {
             added.append(author.trailer)
         }

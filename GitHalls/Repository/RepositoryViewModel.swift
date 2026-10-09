@@ -136,7 +136,17 @@ final class RepositoryViewModel {
     }
     
     var currentBranch: String?
-    
+
+    /// The Jira issues the checked-out branch belongs to, once Jira has said
+    /// the keys are real. Set by `IssueLinkCoordinator`; the next commit names them.
+    var linkedIssueKeys: [String] = []
+
+    /// Told after a push lands, with the commits it sent; and after a pull
+    /// request is opened, with its branch. The repository knows nothing about
+    /// Jira — whoever listens decides what a push means for an issue.
+    @ObservationIgnored var onPush: ((PushedWork) -> Void)?
+    @ObservationIgnored var onPullRequestCreated: ((_ branch: String) -> Void)?
+
     var commitSummary: String = ""
     var commitDescription: String = ""
     var isCommitting: Bool = false
@@ -431,7 +441,8 @@ final class RepositoryViewModel {
             let message = CommitMessageComposer.compose(
                 summary: commitSummary,
                 description: commitDescription,
-                coAuthors: commitCoAuthors
+                coAuthors: commitCoAuthors,
+                issueKeys: linkedIssueKeys
             )
             try await gitService.commit(at: repositoryURL, summary: message.summary, description: message.body, amend: amend)
             commitSummary = ""
@@ -742,7 +753,9 @@ final class RepositoryViewModel {
     func pushBranch(_ name: String, setUpstream: Bool) async {
         guard let repositoryURL else { return }
         await performBranchOperation {
+            let outgoing = await gitService.commitsToPush(at: repositoryURL, branch: name)
             try await gitService.pushBranch(at: repositoryURL, branch: name, setUpstream: setUpstream)
+            announcePush(of: name, commits: outgoing, in: repositoryURL)
         }
     }
 
@@ -1323,7 +1336,9 @@ final class RepositoryViewModel {
         isPushing = true
         defer { isPushing = false }
         do {
+            let outgoing = await gitService.commitsToPush(at: repositoryURL, branch: branch)
             try await gitService.push(at: repositoryURL, branch: branch)
+            announcePush(of: branch, commits: outgoing, in: repositoryURL)
             await refreshStatus()
             errorMessage = nil
         } catch {
@@ -1371,7 +1386,9 @@ final class RepositoryViewModel {
 
         do {
             try await gitService.pullDivergent(at: repositoryURL)
+            let outgoing = await gitService.commitsToPush(at: repositoryURL, branch: branch)
             try await gitService.push(at: repositoryURL, branch: branch)
+            announcePush(of: branch, commits: outgoing, in: repositoryURL)
             errorMessage = nil
         } catch {
             // Same offer as a plain pull: the sync button is where this is most
@@ -1384,6 +1401,11 @@ final class RepositoryViewModel {
         // that is exactly what the user needs to see.
         await refreshStatus()
         await loadGraph()
+    }
+
+    private func announcePush(of branch: String, commits: [Commit], in repositoryURL: URL) {
+        guard !commits.isEmpty else { return }
+        onPush?(PushedWork(repositoryURL: repositoryURL, branch: branch, commits: commits))
     }
 
     /// A push git refused because the upstream has commits this clone has never
@@ -1472,7 +1494,9 @@ final class RepositoryViewModel {
         defer { isCreatingPullRequest = false }
         do {
             if let branch = currentBranch {
+                let outgoing = await gitService.commitsToPush(at: repositoryURL, branch: branch)
                 try await gitService.push(at: repositoryURL, branch: branch)
+                announcePush(of: branch, commits: outgoing, in: repositoryURL)
             }
 
             if await gitHubService.isAvailable() {
@@ -1482,6 +1506,8 @@ final class RepositoryViewModel {
                 if let url = URL(string: output) {
                     NSWorkspace.shared.open(url)
                 }
+                // Only here: the browser fallback below opens a form, not a pull request.
+                if let branch = currentBranch { onPullRequestCreated?(branch) }
             } else {
                 let remote = try await gitService.remoteURL(at: repositoryURL)
                 guard let (owner, repo) = GitHubService.ownerAndRepo(fromRemoteURL: remote) else {

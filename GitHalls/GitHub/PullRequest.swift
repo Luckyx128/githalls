@@ -16,6 +16,52 @@ struct PullRequestSummary: Identifiable, Hashable, Decodable {
     var id: Int { number }
 }
 
+/// A pull request with where it stands, as `gh pr list --state all` reports it.
+struct PullRequestStatus: Hashable, Decodable {
+    enum State: String, Decodable {
+        case open = "OPEN"
+        case closed = "CLOSED"
+        case merged = "MERGED"
+    }
+
+    let number: Int
+    let title: String
+    let url: String
+    let state: State
+
+    /// The branch it goes into: "dev", "homologacao", "main".
+    var baseRefName: String = ""
+
+    /// "APPROVED", "CHANGES_REQUESTED", "REVIEW_REQUIRED", or empty when the
+    /// repository asks for no review.
+    var reviewDecision: String?
+
+    var isApproved: Bool { reviewDecision == "APPROVED" }
+
+    enum CodingKeys: String, CodingKey {
+        case number, title, url, state, baseRefName, reviewDecision
+    }
+
+    init(number: Int, title: String, url: String, state: State, baseRefName: String = "", reviewDecision: String? = nil) {
+        self.number = number
+        self.title = title
+        self.url = url
+        self.state = state
+        self.baseRefName = baseRefName
+        self.reviewDecision = reviewDecision
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        number = try container.decode(Int.self, forKey: .number)
+        title = try container.decode(String.self, forKey: .title)
+        url = try container.decode(String.self, forKey: .url)
+        state = try container.decode(State.self, forKey: .state)
+        baseRefName = try container.decodeIfPresent(String.self, forKey: .baseRefName) ?? ""
+        reviewDecision = try container.decodeIfPresent(String.self, forKey: .reviewDecision)
+    }
+}
+
 /// What the create sheet opens with.
 struct PullRequestDraft: Equatable {
     var title: String

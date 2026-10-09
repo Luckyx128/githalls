@@ -25,7 +25,7 @@ struct IssueCommentsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Comments").font(.headline)
+                Label("Comments", systemImage: "text.bubble").font(.headline).labelStyle(IssueSectionLabelStyle())
                 if !comments.isEmpty { Text("\(comments.count)").foregroundStyle(.secondary) }
                 if isLoading { ProgressView().controlSize(.small) }
             }

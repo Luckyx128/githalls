@@ -435,6 +435,18 @@ extension GitService {
         return Set(result.standardOutput.split(whereSeparator: \.isNewline).map(String.init))
     }
 
+    /// The commits on `branch` that no remote-tracking ref has yet: what pushing
+    /// it is about to send. Read before the push, since afterwards the remote
+    /// has them all. Newest first, as `git log` prints them.
+    func commitsToPush(at repoURL: URL, branch: String, limit: Int = 50) async -> [Commit] {
+        guard let result = try? await run(
+            ["log", "--max-count=\(limit)", "--pretty=tformat:\(Self.logFormat)",
+             "refs/heads/\(branch)", "--not", "--remotes"],
+            in: repoURL
+        ), result.terminationStatus == 0 else { return [] }
+        return CommitLogParser.parse(result.standardOutput)
+    }
+
     /// hash, short hash, author, author date, co-authors, subject.
     private static let logFormat = "%H%x1f%h%x1f%an%x1f%aI%x1f\(coAuthorsFormat)%x1f%s%x1e"
 }

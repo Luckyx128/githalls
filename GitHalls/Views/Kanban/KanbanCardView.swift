@@ -22,6 +22,7 @@ struct KanbanCardView: View {
     @State private var isHovering = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(IssueLinkCoordinator.self) private var link
 
     private var isBusy: Bool { viewModel.busyIssues.contains(issue.key) }
     private var motion: KanbanMotion { KanbanMotion(reduced: reduceMotion) }
@@ -68,11 +69,14 @@ struct KanbanCardView: View {
                 .multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            Text(metaLine)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 6) {
+                Text(metaLine)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                branchBadge
+            }
+            .font(.callout)
 
             if let assignee = issue.assigneeName {
                 Text(assignee)
@@ -126,6 +130,8 @@ struct KanbanCardView: View {
             Button("Loading moves…") {}.disabled(true)
         }
 
+        branchLinkItems
+
         if let mine = viewModel.myAccountID, issue.assigneeAccountID == mine {
             Button("Assigned to you") {}.disabled(true)
         } else {
@@ -141,6 +147,40 @@ struct KanbanCardView: View {
     }
 
     /// The key first, since it is what people say out loud.
+    /// Link this card to the branch checked out, or take back a hand link —
+    /// two cards can ride the same branch.
+    @ViewBuilder
+    private var branchLinkItems: some View {
+        if let branch = link.repository.currentBranch, let repositoryURL = link.repository.repositoryURL {
+            Divider()
+            if link.isManual(issue.key, branch: branch, in: repositoryURL) {
+                Button("Unlink from \(branch)") {
+                    Task { await link.unlink(issue.key, fromBranch: branch, in: repositoryURL) }
+                }
+            } else if !link.currentKeys.contains(issue.key) {
+                Button("Link to \(branch)") {
+                    Task { _ = await link.link(issue.key, toBranch: branch, in: repositoryURL) }
+                }
+            }
+            Divider()
+        }
+    }
+
+    /// A branch named for this issue exists in the open repository; filled when
+    /// it is the one checked out.
+    @ViewBuilder
+    private var branchBadge: some View {
+        if link.currentKeys.contains(issue.key) {
+            Image(systemName: "arrow.triangle.branch")
+                .foregroundStyle(.tint)
+                .help("You are on this issue's branch")
+        } else if link.keysWithBranches.contains(issue.key) {
+            Image(systemName: "arrow.triangle.branch")
+                .foregroundStyle(.tertiary)
+                .help("This issue has a branch in this repository")
+        }
+    }
+
     private var metaLine: String {
         [issue.key, issue.type, issue.priority].compactMap { $0 }.joined(separator: " · ")
     }

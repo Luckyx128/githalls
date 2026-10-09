@@ -21,7 +21,7 @@ struct IssueAttachmentsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("Attachments").font(.headline)
+                Label("Attachments", systemImage: "paperclip").font(.headline).labelStyle(IssueSectionLabelStyle())
                 if isWorking { ProgressView().controlSize(.small) }
                 Spacer()
                 Button("Add File…") { isImporting = true }

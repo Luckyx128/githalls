@@ -19,9 +19,23 @@ struct GitHallsApp: App {
     /// window has to show the same one.
     @State private var clockifyViewModel = ClockifyViewModel()
 
+    /// Where git and Jira meet: the branch's issue, pushes as comments, offers.
+    @State private var issueLink: IssueLinkCoordinator
+
+    init() {
+        let repository = RepositoryViewModel()
+        let jira = JiraViewModel()
+        let clockify = ClockifyViewModel()
+        _viewModel = State(initialValue: repository)
+        _jiraViewModel = State(initialValue: jira)
+        _clockifyViewModel = State(initialValue: clockify)
+        _issueLink = State(initialValue: IssueLinkCoordinator(jira: jira, repository: repository, clockify: clockify))
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView(viewModel: viewModel, jiraViewModel: jiraViewModel)
+                .environment(issueLink)
         }
 
         // One window per issue: opening the same card twice brings its window
@@ -34,6 +48,7 @@ struct GitHallsApp: App {
                     repositoryViewModel: viewModel,
                     clockifyViewModel: clockifyViewModel
                 )
+                .environment(issueLink)
             }
         }
         Settings {

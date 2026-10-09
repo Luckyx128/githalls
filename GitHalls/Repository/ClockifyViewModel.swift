@@ -156,6 +156,25 @@ final class ClockifyViewModel {
         }
     }
 
+    /// What a timer for this issue starts with when nobody fills the form:
+    /// "[KEY]: summary", the project and tags this Jira project used last, and
+    /// the task named after the key.
+    func draft(key: String, summary: String) async -> ClockifyNewEntry {
+        var entry = ClockifyNewEntry(description: Self.description(key: key, summary: summary), start: .now)
+        guard let workspaceID else { return entry }
+
+        let project = JiraIssueKey.project(of: key)
+        if let projectID = ClockifyPreferences.projectID(forJiraProject: project, workspaceID: workspaceID),
+           projects.contains(where: { $0.id == projectID }) {
+            entry.projectID = projectID
+            let found = (try? await tasks(projectID: projectID, matching: key)) ?? []
+            entry.taskID = Self.task(for: key, in: found)?.id
+        }
+        let known = Set(tags.map(\.id))
+        entry.tagIDs = ClockifyPreferences.tagIDs(forJiraProject: project, workspaceID: workspaceID).filter(known.contains)
+        return entry
+    }
+
     // MARK: - Helpers for an issue
 
     /// "[SWEB-6851]: (Front) Melhoria pdf", the way the Clockify extension names it.
