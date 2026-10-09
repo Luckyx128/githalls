@@ -46,6 +46,15 @@ final class JiraCreateIssueViewModel {
     /// Components picked, by id.
     var componentIDs: Set<String> = []
 
+    /// Where the issue goes once created. Jira's create call always files it in
+    /// the backlog, so the active sprint is chosen up front; nil keeps it there.
+    private(set) var sprints: [JiraSprint] = []
+    var sprintID: Int?
+
+    /// Said after a create that worked but could not reach the sprint, so the
+    /// caller can show it once the sheet is gone.
+    private(set) var warning: String?
+
     /// Single-valued dynamic fields: text, a number, an option or team id,
     /// `yyyy-MM-dd`, a duration like "2h 30m".
     var extraValues: [String: String] = [:]
@@ -111,16 +120,22 @@ final class JiraCreateIssueViewModel {
         selectedType = nil
         issueTypes = []
         fields = []
+        sprints = []
+        sprintID = nil
         guard let project else { return }
 
         loads += 1
         defer { loads -= 1 }
+
+        async let loadedSprints = (try? authoring.openSprints(projectKey: project.key)) ?? []
 
         do {
             let loaded = try await authoring.issueTypes(projectKey: project.key)
             // The user may have chosen another project while this was in flight.
             guard selectedProject == project else { return }
             issueTypes = loaded
+            sprints = await loadedSprints
+            sprintID = JiraSprintChoice.defaultSprint(in: sprints)?.id
             // A plain task first: sub-tasks need a parent the user hasn't named.
             let type = issueTypes.first { $0.id == preferredTypeID && project.key == preferredProjectKey }
                 ?? issueTypes.first { $0.name == "Task" && !$0.isSubtask }
@@ -315,6 +330,18 @@ final class JiraCreateIssueViewModel {
             Self.lastProjectKey = draft.projectKey
             errorMessage = nil
             fieldErrors = [:]
+            warning = nil
+
+            // The issue exists from here on; failing to file it in the sprint
+            // must not read as failing to create it.
+            if let sprintID {
+                do {
+                    try await authoring.moveToSprint(sprintID, keys: [key])
+                } catch {
+                    let name = sprints.first { $0.id == sprintID }?.name ?? "the sprint"
+                    warning = "\(key) was created but stayed in the backlog: \(error.localizedDescription) (moving it to \(name))"
+                }
+            }
             return key
         } catch JiraError.fieldErrors(let errors) {
             // Jira keys these by field id; one it names that the sheet has no

@@ -99,6 +99,20 @@ struct CreateIssueSheet: View {
 
     @ViewBuilder
     private var standardFields: some View {
+        // Not a createmeta field: Jira files every created issue in the
+        // backlog, and this moves it right after.
+        if !model.sprints.isEmpty {
+            FieldBlock(title: "Sprint", required: false, error: nil) {
+                Picker("", selection: $model.sprintID) {
+                    Text("Backlog").tag(Int?.none)
+                    ForEach(model.sprints) { sprint in
+                        Text(sprint.state == .active ? "\(sprint.name) (active)" : sprint.name).tag(Optional(sprint.id))
+                    }
+                }
+                .labelsHidden()
+            }
+        }
+
         if model.isShown("priority"), !model.priorityOptions.isEmpty {
             FieldBlock(title: "Priority", required: model.isRequired("priority"), error: model.fieldErrors["priority"]) {
                 Picker("", selection: $model.priorityID) {
@@ -268,6 +282,10 @@ struct CreateIssueSheet: View {
                 Button("Create") {
                     Task {
                         guard let key = await model.submit() else { return }
+                        if let warning = model.warning {
+                            jiraViewModel.actionMessage = warning
+                            jiraViewModel.actionFailed = true
+                        }
                         jiraViewModel.invalidate()
                         onCreated(key)
                         dismiss()

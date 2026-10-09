@@ -90,12 +90,28 @@ final class JiraQuickCreate {
                                                               summary: title))
             summary = ""
             errorMessage = nil
+            await fileInActiveSprint(key, projectKey: projectKey, board: board)
             await Self.place(key, in: status, board: board)
             board.invalidate()
             return .created(key)
         } catch {
             errorMessage = error.localizedDescription
             return .failed
+        }
+    }
+
+    /// Jira files an issue created through the API in the backlog; a card
+    /// typed on the board belongs in the sprint the board is showing.
+    private func fileInActiveSprint(_ key: String, projectKey: String, board: JiraViewModel) async {
+        let known = board.selectedBoard?.projectKey == projectKey ? board.sprints : []
+        let sprints = known.isEmpty ? ((try? await authoring.openSprints(projectKey: projectKey)) ?? []) : known
+        guard let sprint = JiraSprintChoice.defaultSprint(in: sprints) else { return }
+
+        do {
+            try await authoring.moveToSprint(sprint.id, keys: [key])
+        } catch {
+            board.actionMessage = "\(key) was created but stayed in the backlog: \(error.localizedDescription)"
+            board.actionFailed = true
         }
     }
 

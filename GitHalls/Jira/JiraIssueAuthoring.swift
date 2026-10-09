@@ -18,6 +18,27 @@ protocol JiraIssueAuthoring: Sendable {
     func teams(query: String, autoCompleteURL: String?) async throws -> [JiraFieldOption]
     /// The new issue's key.
     func create(_ issue: JiraNewIssue) async throws -> String
+
+    /// Active and future sprints of the project's scrum boards, active first.
+    /// An issue created through the API lands in the backlog; these are where
+    /// it can go instead.
+    func openSprints(projectKey: String) async throws -> [JiraSprint]
+    func moveToSprint(_ sprintID: Int, keys: [String]) async throws
+}
+
+extension JiraIssueAuthoring {
+    /// A backend without boards has no sprints, and nothing to move.
+    func openSprints(projectKey: String) async throws -> [JiraSprint] { [] }
+    func moveToSprint(_ sprintID: Int, keys: [String]) async throws {}
+}
+
+enum JiraSprintChoice {
+    /// The sprint a new issue goes into unless the user says otherwise: the
+    /// active one. With parallel sprints, the one that started first.
+    static func defaultSprint(in sprints: [JiraSprint]) -> JiraSprint? {
+        sprints.filter { $0.state == .active }
+            .min { ($0.startDate ?? .distantFuture) < ($1.startDate ?? .distantFuture) }
+    }
 }
 
 extension JiraClient: JiraIssueAuthoring {}

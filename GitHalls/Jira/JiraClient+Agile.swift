@@ -38,6 +38,23 @@ extension JiraClient {
             .compactMap(JiraSprint.init(json:))
     }
 
+    /// Active and future sprints across the project's scrum boards, each once,
+    /// active first and then by start date.
+    func openSprints(projectKey: String) async throws -> [JiraSprint] {
+        var seen = Set<Int>()
+        var found: [JiraSprint] = []
+        for board in try await boards(projectKey: projectKey) where board.hasSprints {
+            // One board the user cannot read must not hide the others.
+            for sprint in (try? await sprints(boardID: board.id)) ?? [] where seen.insert(sprint.id).inserted {
+                found.append(sprint)
+            }
+        }
+        return found.sorted { lhs, rhs in
+            if (lhs.state == .active) != (rhs.state == .active) { return lhs.state == .active }
+            return (lhs.startDate ?? .distantFuture) < (rhs.startDate ?? .distantFuture)
+        }
+    }
+
     func boardIssues(boardID: Int, jql: String? = nil, startAt: Int = 0, limit: Int = 50,
                      storyPointsField: String? = nil) async throws -> JiraPage<JiraIssue> {
         try await issuePage(path: Self.agile + "/board/\(boardID)/issue", jql: jql, startAt: startAt, limit: limit,
